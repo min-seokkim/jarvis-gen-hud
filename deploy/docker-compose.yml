@@ -1,0 +1,78 @@
+# Hermes Agent — 프로젝트 배포용 compose (집 워크스테이션, WSL2)
+#
+# 토폴로지: 노트북 브라우저 → (인터넷, 포트포워딩+DDNS, 80/443) → caddy(TLS) →
+#           ├─ /      : React 정적 빌드
+#           └─ /v1/*  : hermes API 서버(컨테이너 네트워크 hermes:8642). 키는 Caddy가 주입.
+#  * API 서버는 호스트/인터넷에 직접 노출하지 않는다(포트 미발행). 외부엔 caddy의 80/443만.
+#
+# ── 최초 1회: 설정 마법사(프로바이더/모델/툴). 공식 이미지로 인터랙티브 실행 ──
+#   mkdir -p ~/.hermes
+#   docker run -it --rm -v ~/.hermes:/opt/data nousresearch/hermes-agent setup
+#
+# ── 1단계(첫 항목): hermes만 띄워서 백엔드 경로 검증 ──
+#   cd deploy && cp .env.example .env   # API_SERVER_KEY 등 채우기
+#   docker compose up -d hermes
+#   docker compose exec hermes hermes doctor
+#   docker compose exec hermes curl -s -H "Authorization: Bearer $API_SERVER_KEY" \
+#       http://localhost:8642/v1/models
+#
+# ── 2단계: DDNS/포트포워딩 준비되면 caddy까지 ──  docker compose up -d
+#
+# 주의: 한 데이터 디렉토리(~/.hermes)에 gateway 컨테이너 둘 동시 실행 금지.
+
+services:
+  hermes:
+    image: nousresearch/hermes-agent:latest   # 배포 땐 특정 태그로 pin 권장 (예: :v2026.5.16)
+    container_name: hermes
+    restart: unless-stopped
+    command: ["gateway", "run"]
+    volumes:
+      - ~/.hermes:/opt/data                    # 설정·키·세션·메모리·스킬·로그 영속
+    environment:
+      # OpenAI 호환 API 서버. 컨테이너 네트워크 안에서만 도달(호스트 포트 미발행).
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0                 # 컨테이너 내 0.0.0.0 = 같은 docker 네트워크의 caddy가 도달. 호스트엔 미발행이라 안전.
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY=${API_SERVER_KEY}        # 최소 8자. openssl rand -hex 32
+      # ~/.hermes 파일이 호스트 유저 소유로 남게(권한 문제 예방). 인라인: HERMES_UID=$(id -u) ...
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+      # 대시보드를 같은 컨테이너 side-process로 띄우려면(선택):
+      # - HERMES_DASHBOARD=1                     # 9119, 별도 컨테이너로는 못 띄움(PID 공유 필요)
+    networks: [hermes-net]
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+    # ports:                                    # 디버깅용 로컬 직접 접근이 필요할 때만 임시로:
+    #   - "127.0.0.1:8642:8642"
+
+  # 공개 종단(노트북이 닿는 유일한 곳): TLS + React 서빙 + /v1 프록시 + basic-auth.
+  caddy:
+    image: caddy:2
+    container_name: hermes-caddy
+    restart: unless-stopped
+    depends_on: [hermes]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../web/dist:/srv:ro                     # React 프로덕션 빌드 (실제 앱 위치로 조정)
+      - caddy_data:/data                        # Let's Encrypt 인증서 영속
+      - caddy_config:/config
+    environment:
+      - DDNS_DOMAIN=${DDNS_DOMAIN}
+      - API_SERVER_KEY=${API_SERVER_KEY}
+      - BASIC_AUTH_USER=${BASIC_AUTH_USER}
+      - BASIC_AUTH_HASH=${BASIC_AUTH_HASH}
+    networks: [hermes-net]
+
+networks:
+  hermes-net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

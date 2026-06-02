@@ -1,0 +1,11 @@
+# secrets
+deploy/.env
+*.env
+!*.env.example
+# python
+__pycache__/
+*.pyc
+# node / build
+node_modules/
+web/dist/
+dist/

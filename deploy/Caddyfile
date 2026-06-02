@@ -1,0 +1,40 @@
+# Caddyfile — 노트북 브라우저가 닿는 단 하나의 공개 종단.
+# 역할: (1) React 정적 빌드 서빙  (2) /v1/* 를 Hermes API(127.0.0.1:8642)로 프록시하며
+#       Authorization 헤더를 서버측에서 주입  (3) 사이트 전체를 basic-auth로 게이트  (4) 자동 HTTPS.
+#
+# 자리표시자는 .env / 환경변수로 주입된다:
+#   {$DDNS_DOMAIN}        예: myhome.duckdns.org
+#   {$API_SERVER_KEY}     Hermes API 키 (프론트엔 절대 안 들어감)
+#   {$BASIC_AUTH_USER}    데모 접속 아이디
+#   {$BASIC_AUTH_HASH}    `caddy hash-password` 로 만든 bcrypt 해시
+#
+# React 빌드 산출물(dist)은 컨테이너의 /srv 에 마운트.
+
+{$DDNS_DOMAIN} {
+	encode zstd gzip
+
+	# 사이트 전체 게이트 — 데모장에선 이 비밀번호만 입력하면 됨
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	# /v1/* → Hermes OpenAI 호환 API 서버(같은 docker 네트워크의 컨테이너명 hermes). 키는 여기서(서버측) 주입.
+	handle /v1/* {
+		reverse_proxy hermes:8642 {
+			header_up Authorization "Bearer {$API_SERVER_KEY}"
+			flush_interval -1          # SSE 스트리밍을 버퍼링 없이 흘려보냄
+		}
+	}
+
+	# (M5) 음성 서비스 WebSocket이 생기면 여기에 추가:
+	# handle /voice/* {
+	#     reverse_proxy 127.0.0.1:<VOICE_PORT>
+	# }
+
+	# 그 외 전부 → React SPA (정적 빌드)
+	handle {
+		root * /srv
+		try_files {path} /index.html   # 클라이언트 라우팅 폴백
+		file_server
+	}
+}
