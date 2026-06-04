@@ -1,0 +1,31 @@
+/*
+ * 자비스 톤 최소 토큰 — M1 한정.
+ * 본격 디자인 시스템은 M2. 여기선 청록/검정 기조 + 안정(파랑)↔경고(빨강)만 둔다.
+ */
+:root {
+  /* 배경 (검은 홀로그램 베이스) */
+  --bg-0: #04080c;
+  --bg-1: #0a141c;
+  --bg-2: #0f1f2b;
+
+  /* 청록 홀로그램 액센트 */
+  --teal: #2ee6d6;
+  --teal-dim: #1b8c84;
+  --teal-glow: rgba(46, 230, 214, 0.35);
+
+  /* 상태 매핑 */
+  --stable: #4aa8ff; /* 파랑 = 안정 */
+  --warn: #ff4d4d; /* 빨강 = 경고/실패 */
+
+  /* 텍스트 */
+  --text: #d6f3f0;
+  --text-dim: #7fa6a3;
+
+  /* 라인/경계 */
+  --line: rgba(46, 230, 214, 0.18);
+
+  --radius: 10px;
+  --gap: 12px;
+  --font: 'Segoe UI', system-ui, -apple-system, 'Malgun Gothic', sans-serif;
+  --mono: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+}

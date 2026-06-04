@@ -1,0 +1,333 @@
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(
+      ellipse at 50% -20%,
+      rgba(46, 230, 214, 0.08),
+      transparent 60%
+    ),
+    var(--bg-0);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- App shell grid ---------- */
+.app-shell {
+  height: 100%;
+  display: grid;
+  /* StatusBar / mobile-tabs(데스크톱에선 display:none→트랙 0) / main / InputBar */
+  grid-template-rows: auto auto 1fr auto;
+}
+
+/*
+ * 각 영역을 명시적 행에 고정한다. mobile-tabs가 display:none이 되면
+ * auto-placement가 남은 자식을 끌어올려 InputBar가 1fr 행을 차지하는 버그가 나므로,
+ * 행을 못박아 숨겨진 트랙만 0으로 접히게 한다.
+ */
+.status-bar {
+  grid-row: 1;
+}
+.mobile-tabs {
+  grid-row: 2;
+}
+.app-main {
+  grid-row: 3;
+  min-height: 0; /* grid 자식이 넘칠 때 내부 스크롤 허용 */
+  display: grid;
+  gap: var(--gap);
+  padding: var(--gap);
+}
+.input-bar {
+  grid-row: 4;
+}
+
+/* 패널 슬롯은 그리드 셀을 꽉 채우고, 내부 .panel 이 그 안에서 늘어난다. */
+.panel-slot {
+  min-height: 0;
+  display: flex;
+}
+
+/* PC = 좌우 분할 (대화 | HUD 캔버스) */
+@media (min-width: 768px) {
+  .app-main {
+    grid-template-columns: minmax(320px, 1fr) 1fr;
+  }
+}
+
+/* 모바일 = 한 컬럼, 선택된 패널 하나만 표시(탭 전환) */
+@media (max-width: 767px) {
+  .app-main {
+    grid-template-columns: 1fr;
+    grid-auto-rows: 1fr;
+  }
+  .panel-slot.is-hidden-mobile {
+    display: none;
+  }
+}
+
+.mobile-tabs {
+  display: none;
+}
+@media (max-width: 767px) {
+  .mobile-tabs {
+    display: flex;
+    gap: 8px;
+  }
+  .mobile-tabs button {
+    flex: 1;
+    background: var(--bg-1);
+    color: var(--text-dim);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .mobile-tabs button[aria-selected='true'] {
+    color: var(--bg-0);
+    background: var(--teal);
+    border-color: var(--teal);
+    font-weight: 600;
+  }
+}
+
+.panel {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---------- Status bar ---------- */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+}
+.status-bar .brand {
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--teal);
+  text-shadow: 0 0 12px var(--teal-glow);
+}
+.status-bar .spacer {
+  flex: 1;
+}
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 10px var(--teal-glow);
+}
+.status-dot.is-thinking {
+  animation: pulse 1s ease-in-out infinite;
+}
+.status-dot.is-warning {
+  background: var(--warn);
+  box-shadow: 0 0 10px rgba(255, 77, 77, 0.5);
+}
+.status-label {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ---------- Conversation ---------- */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.msg {
+  max-width: 85%;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+}
+.msg.user {
+  align-self: flex-end;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.msg.assistant {
+  align-self: flex-start;
+  background: rgba(46, 230, 214, 0.06);
+  border: 1px solid var(--line);
+}
+.msg.error {
+  align-self: stretch;
+  max-width: 100%;
+  background: rgba(255, 77, 77, 0.08);
+  border: 1px solid rgba(255, 77, 77, 0.4);
+  color: #ffd2d2;
+  font-size: 13px;
+}
+.msg .caret {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--teal);
+  vertical-align: text-bottom;
+  animation: pulse 0.9s steps(2) infinite;
+}
+.empty-hint {
+  margin: auto;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---------- HUD canvas placeholder ---------- */
+.hud-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 24px;
+}
+.hud-placeholder .reticle {
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--teal-dim);
+  border-radius: 50%;
+  position: relative;
+  opacity: 0.6;
+}
+.hud-placeholder .reticle::before,
+.hud-placeholder .reticle::after {
+  content: '';
+  position: absolute;
+  inset: 18px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.hud-placeholder .reticle::after {
+  inset: 38px;
+}
+
+/* ---------- Input bar ---------- */
+.input-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.input-bar input[type='text'] {
+  flex: 1;
+  min-width: 0; /* flex 자식이 intrinsic 너비 아래로 줄어들도록 (좁은 화면 오버플로 방지) */
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: var(--font);
+}
+.input-bar input[type='text']:focus {
+  outline: none;
+  border-color: var(--teal-dim);
+  box-shadow: 0 0 0 2px var(--teal-glow);
+}
+.input-bar button {
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  padding: 0 16px;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--teal);
+  color: var(--bg-0);
+  font-weight: 600;
+}
+.input-bar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.input-bar .mic {
+  background: var(--bg-2);
+  color: var(--text-dim);
+  width: 44px;
+  padding: 0;
+}
+.input-bar .stop {
+  background: var(--warn);
+  color: #fff;
+}
+
+/* ---------- Error boundary fallback ---------- */
+.crash {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+.crash code {
+  font-family: var(--mono);
+  color: var(--warn);
+  max-width: 80ch;
+  font-size: 13px;
+}
+.crash button {
+  background: var(--teal);
+  color: var(--bg-0);
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 18px;
+  cursor: pointer;
+  font-weight: 600;
+}
