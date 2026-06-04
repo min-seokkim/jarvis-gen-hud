@@ -18,13 +18,8 @@ export default defineConfig(({ mode }) => {
         '/v1': {
           target: hermesTarget,
           changeOrigin: true,
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              if (apiKey) {
-                proxyReq.setHeader('Authorization', `Bearer ${apiKey}`);
-              }
-            });
-          },
+          // 프록시가 타깃으로 보내는 요청에 Authorization을 정적으로 붙인다.
+          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
         },
       },
     },
