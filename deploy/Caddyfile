@@ -22,6 +22,7 @@
 	handle /v1/* {
 		reverse_proxy hermes:8642 {
 			header_up Authorization "Bearer {$API_SERVER_KEY}"
+			header_up -Origin          # Hermes(aiohttp)는 브라우저 Origin 헤더가 붙은 요청을 403으로 거절 → 제거 (dev Vite 프록시도 동일 처리)
 			flush_interval -1          # SSE 스트리밍을 버퍼링 없이 흘려보냄
 		}
 	}
