@@ -16,10 +16,9 @@
 |---|---|
 | 프론트엔드 | React (Vite + TS) 반응형 웹앱 |
 | HUD 렌더링 | 제약 JSX 샌드박스 (react-live / Sandpack, iframe 격리, 자기치유) |
-| 두뇌/에이전트 | Hermes Agent (OpenAI 호환 API 서버로 연결) |
-| 클라우드 모델 | 교체 가능 구조 (현재 OpenAI) |
-| 로컬 모델 | Qwen (음성 즉답·라우팅) |
-| STT / TTS | faster-whisper (로컬) / ElevenLabs |
+| 두뇌/에이전트 | 단일 Hermes Agent (OpenAI 호환 API 서버로 연결) |
+| 두뇌 모델 | 역할 하이브리드 — 빠른 메인(Haiku4.5/GPT-5.4-mini) + 강한 delegation(Opus4.6/GPT-5.5), OpenAI·Anthropic만 |
+| STT / TTS | faster-whisper (로컬) / ElevenLabs — 오케스트레이터가 /v1 멀티플렉싱 (로컬 LLM 없음) |
 | 배포 | Docker(Hermes) + Caddy(TLS·프록시) + 포트포워딩·DDNS |
 
 선택 이유는 [Wiki 기획서](docs/기획서.md) 참조.

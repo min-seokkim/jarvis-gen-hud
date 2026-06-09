@@ -19,7 +19,7 @@
 | 8 | 제약 JSX 생성→샌드박스 렌더→자기치유 루프 | 기능 | M3 | `core` |
 | 9 | 보편 후크: "빌드 상태 보여줘" → 빌드 진행 HUD | 기능 | M3 | `core` |
 | 10 | 본 적 없는 작업의 HUD 발명(프롬프트 일반화) | 기능 | M4 | `core` |
-| 11 | 음성 파이프라인 통합(faster-whisper→Qwen→ElevenLabs) | 기능 | M5 | `feature` |
+| 11 | 음성 파이프라인 통합(faster-whisper→Hermes /v1→ElevenLabs, 오케스트레이터) | 기능 | M5 | `feature` |
 | 12 | 데모 2비트 스크립트 + 백업 녹화 | 기능 | M6 | `demo` |
 
 > 1주차엔 이 중 1~4번 정도를 우선 Issue로 등록하고, 나머지는 주차 진행하며 추가.

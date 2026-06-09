@@ -7,7 +7,7 @@
 `docs/design-system.md`의 토큰과 HUD 프리미티브가 **실제 React 컴포넌트로 존재**하고, **상태별로 렌더되는 갤러리**에서 눈으로 확인된다. (LLM이 이걸로 HUD를 생성하는 건 M3 — 이번엔 재료만 만든다.)
 
 ## 범위
-1. **디자인 토큰** — `docs/design-system.md` §1의 CSS 변수를 전역 스타일로(`web/src/styles/tokens.css`). 앱 전역에서 사용.
+1. **디자인 토큰** — `docs/design-system.md` §1의 CSS 변수를 전역 스타일로(`web/src/styles/tokens.css`). 앱 전역에서 사용. ⚠️ **이 파일은 M1에서 이미 존재** → `design-system.md` §1을 **정본으로 기존 파일을 교체/확장**(토큰 중복·충돌 정의 금지). 기존 M1 화면이 토큰명을 참조 중이면 깨지지 않게 맞춘다.
 2. **상태 타입** — `web/src/hud/types.ts`에 `State`("stable"|"info"|"caution"|"critical"), `Size`.
 3. **HUD 프리미티브** — `web/src/hud/`에 §4 카탈로그 전부, props 계약 그대로:
    Panel · StatusPanel · ProgressBar · Gauge · Stat · Steps · Chart · Waveform · Alert · Badge · KeyValue.

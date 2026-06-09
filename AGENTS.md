@@ -10,7 +10,7 @@
 - **0부터 짓는 건 generative HUD 하나.** 그 외는 기존 완성형을 갖다 쓴다.
 - **계산은 deterministic 코드/도구가, LLM은 오케스트레이션만.** 숫자·계산을 지어내지 않는다.
 - **생성 UI는 디자인 토큰·허용 컴포넌트 스코프만 사용** (자유 생성 + 디자인 언어 제약).
-- **음성 즉답은 클라우드 임계경로에 두지 않는다** (로컬 즉답, HUD는 병렬).
+- **음성 즉답은 클라우드 임계경로에 두지 않는다** (빠른 메인이 즉답/usher, HUD 생성은 병렬).
 - **비밀(키)은 프론트/커밋에 절대 노출 금지.**
 
 ## 저장소 구조
@@ -21,7 +21,7 @@
 - `AGENTS.md`(이 파일) · `CLAUDE.md` — 에이전트 진입 문서
 
 ## 기술 스택 (요약)
-React(Vite + TS) · HUD: 제약 JSX 샌드박스(react-live/Sandpack, iframe 격리, 자기치유) · 두뇌: Hermes Agent(OpenAI 호환 API) · 모델: 교체 가능(현재 OpenAI) · 음성: faster-whisper + Qwen(로컬) + ElevenLabs.
+React(Vite + TS) · HUD: 제약 JSX 샌드박스(react-live/Sandpack, iframe 격리, 자기치유) · 두뇌: **단일 Hermes Agent**(OpenAI 호환 API), **역할 하이브리드**(빠른 메인 Haiku4.5/GPT-5.4-mini = 음성·즉답·dispatch + 강한 delegation Opus4.6/GPT-5.5 = 추론; 프로바이더 OpenAI·Anthropic만) · 음성: faster-whisper(STT, 로컬) + ElevenLabs(TTS), 오케스트레이터(워크스테이션 Python)가 `/v1` 병렬 멀티플렉싱 — **로컬 LLM(Qwen/Ollama) 없음**.
 
 ## 연결 사실 (중요)
 - 프론트는 **같은 출처** `/v1/chat/completions`(SSE 스트리밍)로 Hermes를 호출한다.

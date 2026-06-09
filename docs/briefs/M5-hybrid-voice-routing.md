@@ -1,5 +1,7 @@
 # M5 빌드 브리프 — 하이브리드 음성 라우팅 (로컬 즉답 + 클라우드 HUD)
 
+> ⚠️ **SUPERSEDED (이 브리프의 '음성=로컬 Qwen' 설계는 폐기).** 확정 = **단일 Hermes 브레인 + 역할 하이브리드**(빠른 메인=음성·즉답·dispatch, 강한 delegation=추론). 로컬 LLM(Qwen/Ollama) 안 씀. 근거: `docs/decisions/0001-0003`, [[hybrid-routing]] 메모리. 아래 본문의 '로컬 Qwen 라우터/Ollama/출력양식 라우팅'은 **역사적 기록**일 뿐 — 오케스트레이터(STT·TTS·`/v1` 멀티플렉싱)와 "음성 즉답을 클라우드 임계경로에 두지 않는다"는 원칙만 유효. S0 스파이크는 `hermes_spike.py`로 이미 수행됨.
+
 > Cowork 작성 · Claude Code 핸드오프. **AGENTS.md 준수.**
 > 브랜치: `feature/voice-orchestrator` → `dev` PR.
 > 선행: M1 앱 셸 + Hermes `/v1` 스트리밍(완료) · Hermes SOUL 페르소나(완료, `deploy/hermes/`). (M0 음성 스모크 스크립트 `voice_smoke_test.py`는 제거됨 — S0에서 스파이크를 새로 작성한다.)

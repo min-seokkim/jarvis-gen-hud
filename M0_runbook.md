@@ -1,5 +1,7 @@
 # M0 런북 — De-risk 스파이크 (6/1, ~8h)
 
+> ⚠️ **일부 폐기/완료된 역사 문서.** M0 자체는 통과(Hermes 백엔드·연결 검증). 단 **Spike B 음성 스모크 테스트의 '로컬 Qwen' 부분은 폐기** — 두뇌 구조가 단일 Hermes 브레인 + 역할 하이브리드로 바뀌었고(`docs/decisions/0001`), 음성 검증은 S0 스파이크(`hermes_spike.py`)로 대체됨. `voice_smoke_test.py`도 제거됨. STT(faster-whisper)·TTS(ElevenLabs)는 유지.
+
 목표는 **가장 큰 미지수 셋을 커밋 전에 죽이는 것**이다. 코드 품질·구조는 신경 쓰지 않는다. 전부 버릴 throwaway. 끝에 Go/No-Go만 판단한다.
 
 검증할 셋:
