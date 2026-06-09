@@ -253,6 +253,118 @@ body {
   inset: 38px;
 }
 
+.hud-live-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-4);
+}
+
+.hud-live-preview,
+.hud-live-fallback {
+  min-height: 100%;
+}
+
+.hud-live-preview {
+  animation: hudFadeIn var(--dur) var(--ease);
+}
+
+.hud-live-error {
+  background: var(--state-critical-bg);
+  border: 1px solid var(--state-critical);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  margin: var(--sp-3) 0 0;
+  overflow: auto;
+  padding: var(--sp-3);
+  white-space: pre-wrap;
+}
+
+.hud-skeleton {
+  align-items: center;
+  color: var(--text-mid);
+  display: grid;
+  gap: var(--sp-4);
+  min-height: 100%;
+  place-content: center;
+  text-align: center;
+}
+
+.hud-skeleton-reticle {
+  animation: hudPulse var(--dur-slow) var(--ease) infinite;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-pill);
+  box-shadow: var(--glow);
+  height: 92px;
+  justify-self: center;
+  position: relative;
+  width: 92px;
+}
+
+.hud-skeleton-reticle::before,
+.hud-skeleton-reticle::after {
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  content: '';
+  inset: 18px;
+  position: absolute;
+}
+
+.hud-skeleton-reticle::after {
+  animation: hudSweep var(--dur-slow) var(--ease) infinite;
+  background: var(--accent-glow);
+  border: 0;
+  height: 1px;
+  inset: 50% 10px auto;
+}
+
+.hud-skeleton-lines {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: min(280px, 70vw);
+}
+
+.hud-skeleton-lines span {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2),
+    var(--accent-glow),
+    var(--surface-2)
+  );
+  border-radius: var(--r-pill);
+  height: var(--sp-2);
+}
+
+.hud-skeleton-lines span:nth-child(2) {
+  width: 78%;
+}
+
+.hud-skeleton-lines span:nth-child(3) {
+  width: 58%;
+}
+
+@keyframes hudFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-2));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hudSweep {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(50%);
+  }
+}
+
 /* ---------- Input bar ---------- */
 .input-bar {
   display: flex;
