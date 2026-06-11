@@ -4,20 +4,23 @@ const LABELS: Record<JarvisStatus, string> = {
   idle: '대기',
   listening: '청취',
   thinking: '사고',
+  caution: '주의',
+  tooling: '도구 실행 중',
   rendering: '렌더',
   warning: '경고',
 };
 
 interface Props {
   status: JarvisStatus;
+  detail?: string;
 }
 
 /** 상단 상태바 — 자비스 상태 표시 (M1은 idle/thinking/warning만 실제 사용). */
-export function StatusBar({ status }: Props) {
+export function StatusBar({ status, detail }: Props) {
   const dotClass =
-    status === 'thinking'
+    status === 'thinking' || status === 'tooling'
       ? 'status-dot is-thinking'
-      : status === 'warning'
+      : status === 'warning' || status === 'caution'
         ? 'status-dot is-warning'
         : 'status-dot';
 
@@ -27,7 +30,7 @@ export function StatusBar({ status }: Props) {
       <span className="spacer" />
       <span className={dotClass} aria-hidden="true" />
       <span className="status-label" role="status">
-        {LABELS[status]}
+        {detail ? `${LABELS[status]}: ${detail}` : LABELS[status]}
       </span>
     </header>
   );

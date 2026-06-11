@@ -409,6 +409,11 @@ body {
   width: 44px;
   padding: 0;
 }
+.input-bar .new-conversation {
+  background: var(--surface-2);
+  color: var(--text-mid);
+  padding: 0 var(--sp-3);
+}
 .input-bar .stop {
   background: var(--state-critical);
   color: var(--text);

@@ -1,7 +1,11 @@
-import type { ChatMessage } from '../types';
 import type { HudData } from './hudData';
 import { describeHudDataShape } from './hudData';
-import { streamChat } from './hermes';
+import { streamResponse, type HermesToolEvent } from './hermes';
+import {
+  LIVE_HUD_SOURCES,
+  normalizeLiveHudSpec,
+  type LiveHudSpec,
+} from './liveHud';
 
 const ALLOWED_COMPONENTS = [
   'Panel',
@@ -31,6 +35,7 @@ export interface HudDesign {
 export interface HudEnvelope {
   say: string;
   design: HudDesign | null;
+  live: LiveHudSpec | null;
   data: HudData;
   jsx: string | null;
 }
@@ -41,16 +46,24 @@ export interface HudGenerationResult extends HudEnvelope {
 
 export interface GenerateHudOptions {
   signal?: AbortSignal;
+  conversation?: string | null;
+  store?: boolean;
+  onToolEvent?: (event: HermesToolEvent) => void;
 }
 
 export const HUD_SYSTEM_PROMPT = [
-  'You run a J.A.R.V.I.S HUD agent turn.',
-  'Output JSON only in this exact key order: {"say": string, "design": object|null, "data": object, "jsx": string|null}. No markdown.',
+  'You run one unified J.A.R.V.I.S response turn for this local frontend workspace.',
+  `When the user refers to this project, repo, app, or workspace, use this project root: ${__JARVIS_PROJECT_ROOT__}.`,
+  'Do not silently switch to the Hermes server working directory for project-local questions.',
+  'Keep say short and conversational. Put structured detail in the HUD when a HUD is useful.',
+  'Output JSON only in this exact key order: {"say": string, "design": object|null, "live": object|null, "data": object, "jsx": string|null}. No markdown.',
   'Use available terminal/code_execution/file tools to collect deterministic data for unfamiliar tasks.',
   'Do not invent or correct numeric values. Put compact tool-derived JSON in data.',
   'When possible, include data._source = { tool, command, exitCode }.',
   'Keep data under 50KB. Summarize large tool output into compact JSON before returning it.',
   'Before jsx, fill design = { data_kind, primitives, layout, why }. This is your visible design decision record.',
+  `If the HUD should keep updating without another LLM call, set live = { source, params, intervalMs }. Allowed live sources: ${LIVE_HUD_SOURCES.join(', ')}. Otherwise set live:null.`,
+  'Live source guide: disk -> path capacity data for Gauge/PieChart; project -> git status; build_sim -> simulated build Steps/ProgressBar; proc_watch -> manual PID polling.',
   'design.primitives must contain component names only, such as "Chart" or "ProgressBar"; never include props like "Chart kind=bar" in primitives.',
   'Archetype map: progress/pipeline -> Steps + ProgressBar; utilization/capacity -> Gauge + Stat; breakdown/composition -> PieChart + Stat; timeseries/trend -> Chart kind="line" or kind="area"; comparison/ranking -> Chart kind="bar"; signal/waveform -> Waveform; status/overview -> StatusPanel + Badge + KeyValue.',
   'Graphic density: choose 2-3 complementary primitives, lead with a graphic primitive, and use KeyValue only as supporting detail. Avoid repeating the same label-table layout for different tasks.',
@@ -106,18 +119,12 @@ export async function generateHudJsx(
 ): Promise<HudGenerationResult> {
   const raw = await completeHud(
     [
-      { role: 'system', content: HUD_SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: [
-          `Task context: ${task}`,
-          `Project root for terminal/file tools: ${__JARVIS_PROJECT_ROOT__}`,
-          describeHudDataShape(seedData),
-          `Seed data JSON: ${stringifyForPrompt(seedData)}`,
-          'Return one JSON envelope only.',
-        ].join('\n\n'),
-      },
-    ],
+      `Task context: ${task}`,
+      `Project root for terminal/file tools: ${__JARVIS_PROJECT_ROOT__}`,
+      describeHudDataShape(seedData),
+      `Seed data JSON: ${stringifyForPrompt(seedData)}`,
+      'Return one JSON envelope only.',
+    ].join('\n\n'),
     options,
   );
 
@@ -131,6 +138,7 @@ export async function generateHudJsx(
       {
         say: '',
         design: null,
+        live: null,
         jsx: raw,
         data: seedData,
         repairCount: 0,
@@ -152,21 +160,15 @@ export async function repairHudJsx(
 
   const raw = await completeHud(
     [
-      { role: 'system', content: HUD_SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: [
-          'Repair this HUD envelope. It failed validation or rendering.',
-          `Error: ${errorMessage}`,
-          'Previous envelope/JSX:',
-          previous.jsx ?? JSON.stringify(previous),
-          `Previous design JSON: ${JSON.stringify(previous.design ?? {})}`,
-          describeHudDataShape(previous.data),
-          `Available data JSON: ${stringifyForPrompt(previous.data)}`,
-          'Return fixed JSON envelope only. Preserve deterministic data values. Reuse or update design before jsx. Use only allowed components/props and data references.',
-        ].join('\n\n'),
-      },
-    ],
+      'Repair this HUD envelope. It failed validation or rendering.',
+      `Error: ${errorMessage}`,
+      'Previous envelope/JSX:',
+      previous.jsx ?? JSON.stringify(previous),
+      `Previous design JSON: ${JSON.stringify(previous.design ?? {})}`,
+      describeHudDataShape(previous.data),
+      `Available data JSON: ${stringifyForPrompt(previous.data)}`,
+      'Return fixed JSON envelope only. Preserve deterministic data values. Reuse or update design before jsx. Use only allowed components/props and data references.',
+    ].join('\n\n'),
     options,
   );
 
@@ -184,7 +186,11 @@ export async function repairHudJsx(
       repairCount: previous.repairCount + 1,
     };
     if (failedAttempt.repairCount >= MAX_REPAIR_ATTEMPTS) {
-      return createHudFallback(previous.data, message, failedAttempt.repairCount);
+      return createHudFallback(
+        previous.data,
+        message,
+        failedAttempt.repairCount,
+      );
     }
     return repairHudJsx(failedAttempt, message, options);
   }
@@ -203,8 +209,8 @@ export function createHudFallback(
       layout: 'single critical fallback panel',
       why: 'Generated HUD failed validation or runtime rendering.',
     },
-    jsx:
-      '<Panel title="HUD fallback" state="critical"><Alert severity="critical" title="HUD render failed" message={data.errorMessage} /></Panel>',
+    live: null,
+    jsx: '<Panel title="HUD fallback" state="critical"><Alert severity="critical" title="HUD render failed" message={data.errorMessage} /></Panel>',
     data: { ...data, errorMessage },
     repairCount,
   };
@@ -230,6 +236,7 @@ export function extractHudEnvelope(raw: string): HudEnvelope {
       return {
         say: parsed.say,
         design: normalizeDesign(parsed.design),
+        live: normalizeLiveHudSpec(parsed.live),
         data: capData(parsed.data),
         jsx: typeof parsed.jsx === 'string' ? parsed.jsx.trim() : null,
       };
@@ -241,10 +248,13 @@ export function extractHudEnvelope(raw: string): HudEnvelope {
     say: '',
     design: {
       data_kind: 'legacy_jsx',
-      primitives: inferComponents(jsx).filter((component) => component !== 'Panel'),
+      primitives: inferComponents(jsx).filter(
+        (component) => component !== 'Panel',
+      ),
       layout: 'legacy JSX extraction',
       why: 'Recovered JSX from a non-envelope response.',
     },
+    live: null,
     data: {},
     jsx,
   };
@@ -252,7 +262,8 @@ export function extractHudEnvelope(raw: string): HudEnvelope {
 
 export function extractHudJsx(raw: string): string {
   const trimmed = raw.trim();
-  const parsed = tryParseJson(trimmed) ?? tryParseJson(extractCodeBlock(trimmed));
+  const parsed =
+    tryParseJson(trimmed) ?? tryParseJson(extractCodeBlock(trimmed));
   if (parsed && typeof parsed.jsx === 'string') {
     return parsed.jsx.trim();
   }
@@ -290,7 +301,9 @@ export function assertValidHudJsx(jsx: string): void {
     throw new Error('HUD JSX contains a forbidden global or statement.');
   }
   if (/\b(style|className|dangerouslySetInnerHTML)\s*=/.test(trimmed)) {
-    throw new Error('HUD JSX cannot use style, className, or raw HTML injection props.');
+    throw new Error(
+      'HUD JSX cannot use style, className, or raw HTML injection props.',
+    );
   }
   if (/#|rgb\(|rgba\(|hsl\(|hsla\(/i.test(trimmed)) {
     throw new Error('HUD JSX cannot contain raw color values.');
@@ -298,21 +311,35 @@ export function assertValidHudJsx(jsx: string): void {
   if (/<\/?[a-z][\w-]*\b/.test(trimmed)) {
     throw new Error('HUD JSX cannot use arbitrary HTML elements.');
   }
-  if (/\b(?:value|steps|samples|data|items|slices)\s*=\s*{\s*\d/.test(trimmed)) {
-    throw new Error('HUD JSX must reference deterministic data instead of hardcoded numbers.');
+  if (
+    /\b(?:value|steps|samples|data|items|slices)\s*=\s*{\s*\d/.test(trimmed)
+  ) {
+    throw new Error(
+      'HUD JSX must reference deterministic data instead of hardcoded numbers.',
+    );
   }
-  if (/\b(?:items|steps|samples|data|slices)\s*=\s*{\s*(?!data\.)/.test(trimmed)) {
+  if (
+    /\b(?:items|steps|samples|data|slices)\s*=\s*{\s*(?!data\.)/.test(trimmed)
+  ) {
     throw new Error('HUD array props must reference data.* directly.');
   }
-  if (/\b(?:state|severity)\s*=\s*"(?!stable"|info"|caution"|critical")/.test(trimmed)) {
-    throw new Error('HUD state props must be stable, info, caution, or critical.');
+  if (
+    /\b(?:state|severity)\s*=\s*"(?!stable"|info"|caution"|critical")/.test(
+      trimmed,
+    )
+  ) {
+    throw new Error(
+      'HUD state props must be stable, info, caution, or critical.',
+    );
   }
 
   const components = new Set(inferComponents(trimmed));
 
   if (
     components.has('KeyValue') &&
-    [...components].every((component) => component === 'Panel' || component === 'KeyValue')
+    [...components].every(
+      (component) => component === 'Panel' || component === 'KeyValue',
+    )
   ) {
     throw new Error(
       'HUD cannot be KeyValue-only. Add a visual primitive such as PieChart, Gauge, ProgressBar, Chart, Stat, Steps, StatusPanel, or Alert.',
@@ -335,7 +362,9 @@ function assertValidHudDesign(design: HudDesign | null, jsx: string): void {
     typeof design.why !== 'string' ||
     !Array.isArray(design.primitives)
   ) {
-    throw new Error('HUD design must include data_kind, primitives, layout, and why.');
+    throw new Error(
+      'HUD design must include data_kind, primitives, layout, and why.',
+    );
   }
 
   const jsxComponents = new Set(inferComponents(jsx));
@@ -346,21 +375,36 @@ function assertValidHudDesign(design: HudDesign | null, jsx: string): void {
     throw new Error('HUD design must list at least one primitive.');
   }
   for (const primitive of listed) {
-    if (!ALLOWED_COMPONENTS.includes(primitive as (typeof ALLOWED_COMPONENTS)[number])) {
+    if (
+      !ALLOWED_COMPONENTS.includes(
+        primitive as (typeof ALLOWED_COMPONENTS)[number],
+      )
+    ) {
       throw new Error(`HUD design lists disallowed primitive: ${primitive}.`);
     }
     if (primitive !== 'Panel' && !jsxComponents.has(primitive)) {
-      throw new Error(`HUD design primitive is missing from JSX: ${primitive}.`);
+      throw new Error(
+        `HUD design primitive is missing from JSX: ${primitive}.`,
+      );
     }
   }
 }
 
 async function completeHud(
-  messages: ChatMessage[],
+  input: string,
   options: GenerateHudOptions,
 ): Promise<string> {
   let output = '';
-  for await (const delta of streamChat(messages, { signal: options.signal })) {
+  for await (const delta of streamResponse(
+    input,
+    options.conversation ?? null,
+    {
+      signal: options.signal,
+      store: options.store,
+      instructions: HUD_SYSTEM_PROMPT,
+      onToolEvent: options.onToolEvent,
+    },
+  )) {
     output += delta;
   }
   return output;
@@ -413,7 +457,9 @@ function normalizeDesign(value: unknown): HudDesign | null {
   if (!isRecord(value)) return null;
   return {
     data_kind: typeof value.data_kind === 'string' ? value.data_kind : '',
-    primitives: Array.isArray(value.primitives) ? value.primitives.filter(isString) : [],
+    primitives: Array.isArray(value.primitives)
+      ? value.primitives.filter(isString)
+      : [],
     layout: typeof value.layout === 'string' ? value.layout : '',
     why: typeof value.why === 'string' ? value.why : '',
   };
@@ -423,7 +469,11 @@ function inferComponents(jsx: string): string[] {
   const components: string[] = [];
   for (const tag of jsx.matchAll(/<\/?([A-Z][A-Za-z0-9]*)\b/g)) {
     const component = tag[1];
-    if (!ALLOWED_COMPONENTS.includes(component as (typeof ALLOWED_COMPONENTS)[number])) {
+    if (
+      !ALLOWED_COMPONENTS.includes(
+        component as (typeof ALLOWED_COMPONENTS)[number],
+      )
+    ) {
       throw new Error(`HUD JSX uses disallowed component: ${component}.`);
     }
     if (!components.includes(component)) components.push(component);

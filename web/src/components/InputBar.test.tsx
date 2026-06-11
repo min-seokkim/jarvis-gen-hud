@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { InputBar } from './InputBar';
@@ -8,12 +8,14 @@ function renderInputBar(
 ) {
   const onSend = vi.fn();
   const onStop = vi.fn();
+  const onNewConversation = vi.fn();
   const result = render(
     <InputBar
       canSend
       streaming={false}
       onSend={onSend}
       onStop={onStop}
+      onNewConversation={onNewConversation}
       {...props}
     />,
   );
@@ -22,6 +24,7 @@ function renderInputBar(
     ...result,
     onSend,
     onStop,
+    onNewConversation,
     input: result.getByRole('textbox'),
     submitButton: result.container.querySelector(
       'button[type="submit"]',
@@ -67,5 +70,14 @@ describe('InputBar', () => {
     await user.click(stopButton);
 
     expect(onStop).toHaveBeenCalledOnce();
+  });
+
+  it('starts a new conversation from the command bar', async () => {
+    const user = userEvent.setup();
+    const { onNewConversation } = renderInputBar();
+
+    await user.click(screen.getByRole('button', { name: '새 대화' }));
+
+    expect(onNewConversation).toHaveBeenCalledOnce();
   });
 });

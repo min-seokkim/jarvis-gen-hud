@@ -7,10 +7,17 @@ interface Props {
   streaming: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
+  onNewConversation: () => void;
 }
 
 /** 하단 입력 바 — 텍스트(우선) + 마이크 버튼(M5까지 자리만, 비활성). */
-export function InputBar({ canSend, streaming, onSend, onStop }: Props) {
+export function InputBar({
+  canSend,
+  streaming,
+  onSend,
+  onStop,
+  onNewConversation,
+}: Props) {
   const [text, setText] = useState('');
 
   function submit(e: FormEvent) {
@@ -23,6 +30,14 @@ export function InputBar({ canSend, streaming, onSend, onStop }: Props) {
 
   return (
     <form className="input-bar" onSubmit={submit}>
+      <button
+        type="button"
+        className="new-conversation"
+        onClick={onNewConversation}
+        disabled={streaming}
+      >
+        새 대화
+      </button>
       <button
         type="button"
         className="mic"

@@ -16,6 +16,7 @@ import {
 } from '../hud';
 import type { HudData } from '../lib/hudData';
 import type { HudDesign } from '../lib/hudGenerator';
+import type { LiveHudSpec } from '../lib/liveHud';
 
 export type HudPhase = 'idle' | 'generating' | 'rendered' | 'error';
 
@@ -23,6 +24,8 @@ export interface HudRenderState {
   phase: HudPhase;
   jsx?: string;
   design?: HudDesign | null;
+  live?: LiveHudSpec | null;
+  liveStatus?: 'connected' | 'disconnected' | 'ended';
   data?: HudData;
   message?: string;
   repairCount?: number;

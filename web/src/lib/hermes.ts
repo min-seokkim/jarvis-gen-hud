@@ -1,49 +1,57 @@
-import type { ChatMessage } from '../types';
-
 /**
- * Hermes(OpenAI 호환) /v1/chat/completions SSE 스트리밍 클라이언트.
+ * Hermes(OpenAI-compatible) /v1/responses SSE streaming client.
  *
- * 무의존(fetch + ReadableStream)으로 직접 SSE를 파싱한다.
- * - 같은 출처 `/v1/...` 로 호출한다(dev는 Vite 프록시, 배포는 Caddy가 프록시).
- * - **API 키는 여기에 없다.** Authorization 헤더는 프록시 단(서버측)에서 주입된다.
+ * The browser only calls same-origin `/v1/...`; dev Vite and production Caddy
+ * inject Authorization server-side. No API key belongs in this bundle.
  */
 
-const HERMES_ENDPOINT = '/v1/chat/completions';
-
-// 모델명은 비밀이 아니므로 프론트 env로 둘 수 있다. 서버 기본값을 쓰려면 비워둔다.
+const HERMES_ENDPOINT = '/v1/responses';
 const HERMES_MODEL = import.meta.env.VITE_HERMES_MODEL ?? 'hermes';
+const DEFAULT_SESSION_KEY = 'jarvis:main';
+const SESSION_KEY =
+  sanitizeSessionKey(import.meta.env.VITE_JARVIS_SESSION_KEY) ??
+  DEFAULT_SESSION_KEY;
 
-/** OpenAI 호환 스트리밍 청크에서 우리가 읽는 최소 형태. */
-interface ChatCompletionChunk {
-  choices?: Array<{
-    delta?: { content?: string | null };
-    finish_reason?: string | null;
-  }>;
+export interface HermesToolEvent {
+  phase: 'call' | 'output';
+  name: string;
+  item?: Record<string, unknown>;
 }
 
-export interface StreamOptions {
+export interface StreamResponseOptions {
   signal?: AbortSignal;
   model?: string;
+  instructions?: string;
+  store?: boolean;
+  onToolEvent?: (event: HermesToolEvent) => void;
 }
 
-/**
- * 메시지 배열을 보내고 assistant 토큰(델타 문자열)을 도착하는 즉시 yield 한다.
- * 호출부는 `for await (const delta of streamChat(...))` 로 누적 렌더하면 된다.
- *
- * @throws 응답이 ok가 아니거나 본문이 없으면 Error. (호출부에서 잡아 에러 상태로 전환)
- */
-export async function* streamChat(
-  messages: ChatMessage[],
-  options: StreamOptions = {},
+export interface ResponseSseEvent {
+  event?: string;
+  data: string;
+}
+
+export async function* streamResponse(
+  input: string,
+  conversation: string | null,
+  options: StreamResponseOptions = {},
 ): AsyncGenerator<string, void, unknown> {
+  const body: Record<string, unknown> = {
+    model: options.model ?? HERMES_MODEL,
+    input,
+    store: options.store ?? true,
+    stream: true,
+  };
+  if (conversation) body.conversation = conversation;
+  if (options.instructions) body.instructions = options.instructions;
+
   const response = await fetch(HERMES_ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: options.model ?? HERMES_MODEL,
-      messages,
-      stream: true,
-    }),
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Hermes-Session-Key': SESSION_KEY,
+    },
+    body: JSON.stringify(body),
     signal: options.signal,
   });
 
@@ -68,35 +76,188 @@ export async function* streamChat(
 
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE 이벤트는 줄 단위. 마지막 줄은 잘렸을 수 있으니 버퍼에 남긴다.
-      let newlineIndex: number;
-      while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-        const rawLine = buffer.slice(0, newlineIndex).trim();
-        buffer = buffer.slice(newlineIndex + 1);
-        if (!rawLine || !rawLine.startsWith('data:')) continue;
+      const parsed = drainSseEvents(buffer);
+      buffer = parsed.remainder;
+      for (const event of parsed.events) {
+        if (event.data === '[DONE]') return;
 
-        const payload = rawLine.slice('data:'.length).trim();
-        if (payload === '[DONE]') return;
-
-        const delta = extractDelta(payload);
+        const delta = readResponseDelta(event);
         if (delta) yield delta;
+
+        const toolEvent = readToolEvent(event);
+        if (toolEvent) options.onToolEvent?.(toolEvent);
       }
     }
+
+    const tail = parseSseEvent(buffer.trim());
+    if (tail && tail.data !== '[DONE]') {
+      const delta = readResponseDelta(tail);
+      if (delta) yield delta;
+      const toolEvent = readToolEvent(tail);
+      if (toolEvent) options.onToolEvent?.(toolEvent);
+    }
   } finally {
-    // 소비자가 중단(break/abort)해도 네트워크 리소스를 풀어준다.
     reader.releaseLock();
   }
 }
 
-/** 한 SSE 데이터 청크(JSON)에서 content 델타를 꺼낸다. 깨진 청크는 조용히 무시. */
-function extractDelta(payload: string): string | undefined {
-  let chunk: ChatCompletionChunk;
+export function createConversationName(date = new Date()): string {
+  return `jarvis-${date.toISOString().replace(/[:.]/g, '-')}`;
+}
+
+export function getHermesSessionKeyForTest(): string {
+  return SESSION_KEY;
+}
+
+export function extractResponseTextDeltaForTest(
+  event: ResponseSseEvent,
+): string | undefined {
+  return readResponseDelta(event);
+}
+
+export function extractToolEventForTest(
+  event: ResponseSseEvent,
+): HermesToolEvent | undefined {
+  return readToolEvent(event);
+}
+
+function drainSseEvents(buffer: string): {
+  events: ResponseSseEvent[];
+  remainder: string;
+} {
+  const events: ResponseSseEvent[] = [];
+  let remainder = buffer;
+  let boundary = findEventBoundary(remainder);
+
+  while (boundary !== -1) {
+    const rawEvent = remainder.slice(0, boundary);
+    remainder = remainder.slice(
+      boundary + (remainder[boundary] === '\r' ? 4 : 2),
+    );
+    const event = parseSseEvent(rawEvent);
+    if (event) events.push(event);
+    boundary = findEventBoundary(remainder);
+  }
+
+  return { events, remainder };
+}
+
+function findEventBoundary(buffer: string): number {
+  const lf = buffer.indexOf('\n\n');
+  const crlf = buffer.indexOf('\r\n\r\n');
+  if (lf === -1) return crlf;
+  if (crlf === -1) return lf;
+  return Math.min(lf, crlf);
+}
+
+function parseSseEvent(raw: string): ResponseSseEvent | undefined {
+  const lines = raw.split(/\r?\n/);
+  const data: string[] = [];
+  let event: string | undefined;
+
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      event = line.slice('event:'.length).trim();
+    } else if (line.startsWith('data:')) {
+      data.push(line.slice('data:'.length).trimStart());
+    }
+  }
+
+  if (data.length === 0) return undefined;
+  return { event, data: data.join('\n') };
+}
+
+function readResponseDelta(event: ResponseSseEvent): string | undefined {
+  const payload = parsePayload(event.data);
+  if (!payload) return undefined;
+  const type = getString(payload.type) ?? event.event;
+  if (type !== 'response.output_text.delta') return undefined;
+  return getString(payload.delta) ?? getString(payload.text);
+}
+
+function readToolEvent(event: ResponseSseEvent): HermesToolEvent | undefined {
+  const payload = parsePayload(event.data);
+  if (!payload) return undefined;
+  const type = getString(payload.type) ?? event.event;
+  const item = getRecord(payload.item) ?? payload;
+  const itemType = getString(item.type);
+
+  if (
+    type === 'response.output_item.added' &&
+    (itemType === 'function_call' || itemType === 'tool_call')
+  ) {
+    return {
+      phase: 'call',
+      name: getToolName(item),
+      item,
+    };
+  }
+  if (
+    type === 'response.output_item.done' &&
+    (itemType === 'function_call_output' || itemType === 'tool_call_output')
+  ) {
+    return {
+      phase: 'output',
+      name: getToolName(item),
+      item,
+    };
+  }
+  if (type === 'function_call') {
+    return { phase: 'call', name: getToolName(item), item };
+  }
+  if (type === 'function_call_output') {
+    return { phase: 'output', name: getToolName(item), item };
+  }
+
+  return undefined;
+}
+
+function getToolName(item: Record<string, unknown>): string {
+  return (
+    getString(item.name) ??
+    getString(item.tool_name) ??
+    getString(item.call_id) ??
+    'tool'
+  );
+}
+
+function parsePayload(data: string): Record<string, unknown> | undefined {
   try {
-    chunk = JSON.parse(payload);
+    const value = JSON.parse(data) as unknown;
+    if (isRecord(value)) return value;
   } catch {
     return undefined;
   }
-  return chunk.choices?.[0]?.delta?.content ?? undefined;
+  return undefined;
+}
+
+function getRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function getString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function sanitizeSessionKey(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 256 || hasControlCharacter(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) return true;
+  }
+  return false;
 }
 
 async function safeReadText(response: Response): Promise<string> {

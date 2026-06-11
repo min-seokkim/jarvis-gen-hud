@@ -41,6 +41,7 @@ describe('extractHudEnvelope', () => {
           layout: 'status summary with supporting facts',
           why: 'A count is best shown as a status readout with detail.',
         },
+        live: { source: 'project', params: { root: '.' }, intervalMs: 500 },
         data: { count: 2, summaryItems: [{ k: 'count', v: '2' }] },
         jsx: '<Panel title="X" state="info"><StatusPanel label="Count" value={data.count} state="info" /><KeyValue items={data.summaryItems} /></Panel>',
       }),
@@ -48,6 +49,11 @@ describe('extractHudEnvelope', () => {
 
     expect(envelope.say).toBe('done');
     expect(envelope.design?.data_kind).toBe('status/overview');
+    expect(envelope.live).toEqual({
+      source: 'project',
+      params: { root: '.' },
+      intervalMs: 1000,
+    });
     expect(envelope.data.count).toBe(2);
     expect(envelope.jsx).toContain('KeyValue');
     expect(() => assertValidHudEnvelope(envelope)).not.toThrow();
@@ -98,6 +104,26 @@ describe('extractHudEnvelope', () => {
     );
 
     expect(() => assertValidHudEnvelope(envelope)).toThrow(/PieChart/);
+  });
+
+  it('drops unknown live sources without rejecting the HUD', () => {
+    const envelope = extractHudEnvelope(
+      JSON.stringify({
+        say: 'done',
+        design: {
+          data_kind: 'status/overview',
+          primitives: ['StatusPanel'],
+          layout: 'status',
+          why: 'summary',
+        },
+        live: { source: 'unknown_source' },
+        data: { count: 2 },
+        jsx: '<Panel title="X" state="info"><StatusPanel label="Count" value={data.count} state="info" /></Panel>',
+      }),
+    );
+
+    expect(envelope.live).toBeNull();
+    expect(() => assertValidHudEnvelope(envelope)).not.toThrow();
   });
 });
 

@@ -9,4 +9,12 @@ describe('StatusBar', () => {
     expect(screen.getByText('J.A.R.V.I.S')).toBeInTheDocument();
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
+
+  it('renders tool execution detail', () => {
+    render(<StatusBar status="tooling" detail="terminal" />);
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '도구 실행 중: terminal',
+    );
+  });
 });

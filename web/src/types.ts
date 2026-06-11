@@ -10,5 +10,7 @@ export type JarvisStatus =
   | 'idle' // 대기
   | 'listening' // 청취 (M5 음성에서 사용, 지금은 자리만)
   | 'thinking' // 사고·생성
+  | 'caution' // 주의/부분 장애
+  | 'tooling' // 도구 실행 중
   | 'rendering' // 렌더 (M3 HUD에서 사용, 지금은 자리만)
   | 'warning'; // 경고/에러

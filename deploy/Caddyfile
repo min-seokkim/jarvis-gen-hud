@@ -27,6 +27,11 @@
 		}
 	}
 
+	# /ws → 워크스테이션 오케스트레이터 라이브 HUD 채널. Caddy가 WebSocket upgrade를 자동 처리.
+	handle /ws {
+		reverse_proxy orchestrator:8765
+	}
+
 	# (M5) 음성 서비스 WebSocket이 생기면 여기에 추가:
 	# handle /voice/* {
 	#     reverse_proxy 127.0.0.1:<VOICE_PORT>
