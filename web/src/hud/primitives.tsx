@@ -16,14 +16,14 @@ export interface StatusPanelProps {
 }
 
 export interface ProgressBarProps {
-  value: number;
+  value?: number;
   label?: string;
   state?: State;
   showPct?: boolean;
 }
 
 export interface GaugeProps {
-  value: number;
+  value?: number;
   min?: number;
   max?: number;
   unit?: string;
@@ -40,19 +40,23 @@ export interface StatProps {
 }
 
 export interface StepsProps {
-  steps: { name: string; status: StepStatus }[];
+  steps?: { name: string; status: StepStatus }[];
+  items?: { name: string; status: StepStatus }[];
+  data?: { name: string; status: StepStatus }[];
 }
 
 export interface ChartProps {
-  kind: 'line' | 'bar' | 'area';
-  data: { x: string | number; y: number }[];
+  kind?: 'line' | 'bar' | 'area';
+  data?: { x: string | number; y: number }[];
+  points?: { x: string | number; y: number }[];
   unit?: string;
   label?: string;
   state?: State;
 }
 
 export interface WaveformProps {
-  samples: number[];
+  samples?: number[];
+  data?: number[];
   label?: string;
   state?: State;
 }
@@ -69,7 +73,8 @@ export interface BadgeProps {
 }
 
 export interface KeyValueProps {
-  items: { k: string; v: string }[];
+  items?: { k?: string; v?: string; label?: string; value?: string }[];
+  data?: { k?: string; v?: string; label?: string; value?: string }[];
 }
 
 const DEFAULT_STATE: State = 'info';
@@ -106,7 +111,7 @@ export function ProgressBar({
   state = DEFAULT_STATE,
   showPct = false,
 }: ProgressBarProps) {
-  const normalized = toPercent(value);
+  const normalized = toPercent(value ?? 0);
 
   return (
     <div className={`hud-progress hud-state-${state}`}>
@@ -129,7 +134,8 @@ export function Gauge({
   label,
   state = DEFAULT_STATE,
 }: GaugeProps) {
-  const pct = normalize(value, min, max);
+  const displayValue = Number.isFinite(value) ? Number(value) : min;
+  const pct = normalize(displayValue, min, max);
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - pct);
@@ -148,7 +154,7 @@ export function Gauge({
         />
       </svg>
       <div className="hud-gauge-readout">
-        <span>{value}</span>
+        <span>{displayValue}</span>
         {unit && <small>{unit}</small>}
       </div>
       {label && <div className="hud-label">{label}</div>}
@@ -180,10 +186,16 @@ export function Stat({
   );
 }
 
-export function Steps({ steps }: StepsProps) {
+export function Steps({ steps, items, data }: StepsProps) {
+  const safeSteps = asArray(steps ?? items ?? data);
+
+  if (safeSteps.length === 0) {
+    return <div className="hud-empty">No steps</div>;
+  }
+
   return (
     <ol className="hud-steps">
-      {steps.map((step) => (
+      {safeSteps.map((step) => (
         <li key={`${step.name}-${step.status}`} className={`is-${step.status}`}>
           <span className="hud-step-dot" aria-hidden="true" />
           <span>{step.name}</span>
@@ -194,13 +206,14 @@ export function Steps({ steps }: StepsProps) {
 }
 
 export function Chart({
-  kind,
+  kind = 'line',
   data,
+  points: pointData,
   unit,
   label,
   state = DEFAULT_STATE,
 }: ChartProps) {
-  const points = chartPoints(data);
+  const points = chartPoints(asArray(data ?? pointData));
 
   return (
     <div className={`hud-chart hud-state-${state}`}>
@@ -246,10 +259,11 @@ export function Chart({
 
 export function Waveform({
   samples,
+  data,
   label,
   state = DEFAULT_STATE,
 }: WaveformProps) {
-  const points = waveformPoints(samples);
+  const points = waveformPoints(asArray(samples ?? data));
 
   return (
     <div className={`hud-waveform hud-state-${state}`}>
@@ -279,13 +293,19 @@ export function Badge({ text, state = DEFAULT_STATE }: BadgeProps) {
   return <span className={`hud-badge hud-state-${state}`}>{text}</span>;
 }
 
-export function KeyValue({ items }: KeyValueProps) {
+export function KeyValue({ items, data }: KeyValueProps) {
+  const safeItems = asArray(items ?? data);
+
+  if (safeItems.length === 0) {
+    return <div className="hud-empty">No items</div>;
+  }
+
   return (
     <dl className="hud-key-value">
-      {items.map((item) => (
-        <div key={item.k}>
-          <dt>{item.k}</dt>
-          <dd>{item.v}</dd>
+      {safeItems.map((item) => (
+        <div key={item.k ?? item.label}>
+          <dt>{item.k ?? item.label}</dt>
+          <dd>{item.v ?? item.value}</dd>
         </div>
       ))}
     </dl>
@@ -293,10 +313,12 @@ export function KeyValue({ items }: KeyValueProps) {
 }
 
 function toPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
   return clamp(value, 0, 100);
 }
 
 function normalize(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return 0;
   if (max <= min) return 0;
   return clamp((value - min) / (max - min), 0, 1);
 }
@@ -312,7 +334,7 @@ interface ChartPoint {
 }
 
 function chartPoints(data: ChartProps['data']): ChartPoint[] {
-  if (data.length === 0) return [];
+  if (!data || data.length === 0) return [];
 
   const values = data.map((point) => point.y);
   const min = Math.min(...values);
@@ -347,4 +369,8 @@ function waveformPoints(samples: number[]): string | undefined {
       return `${x},${y}`;
     })
     .join(' ');
+}
+
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : [];
 }

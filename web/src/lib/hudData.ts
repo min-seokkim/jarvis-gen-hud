@@ -1,13 +1,10 @@
 import type { StepStatus } from '../hud';
 
+export type HudData = Record<string, unknown>;
+
 export interface BuildStatusData {
   progress: number;
   steps: { name: string; status: StepStatus }[];
-}
-
-export interface HudData {
-  build: BuildStatusData;
-  errorMessage?: string;
 }
 
 export function getBuildStatus(): BuildStatusData {
@@ -23,22 +20,56 @@ export function getBuildStatus(): BuildStatusData {
   };
 }
 
-export function getHudData(): HudData {
-  return {
-    build: getBuildStatus(),
-  };
+export async function getHudData(task = ''): Promise<HudData> {
+  if (isBuildStatusTask(task)) {
+    return { build: getBuildStatus() };
+  }
+
+  return {};
 }
 
 export function describeHudDataShape(data: HudData): string {
-  const stepStatuses = data.build.steps
-    .map((step) => `${step.name}:${step.status}`)
-    .join(', ');
+  const lines = ['provided deterministic seed data shape:'];
+  const shape = describeValue(data, 0);
+  lines.push(shape.length > 0 ? shape : '- {}');
+  lines.push(
+    'Seed data is optional. For new tasks, use Hermes tools and return collected results in the envelope data object.',
+  );
+  return lines.join('\n');
+}
 
-  return [
-    'data shape:',
-    '- data.build.progress: number (0..100)',
-    '- data.build.steps: Array<{ name: string; status: "done" | "active" | "pending" | "failed" }>',
-    `Current deterministic step status labels for context only: ${stepStatuses}`,
-    'Use data.build.progress and data.build.steps directly. Do not copy numeric values into JSX.',
-  ].join('\n');
+function isBuildStatusTask(input: string): boolean {
+  const normalized = input.toLocaleLowerCase();
+  return ['빌드', 'build'].some((keyword) => normalized.includes(keyword));
+}
+
+function describeValue(value: unknown, depth: number, key = 'data'): string {
+  if (depth >= 3) return `- ${key}: ${typeOf(value)}`;
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return `- ${key}: []`;
+    return [`- ${key}: Array<${typeOf(value[0])}>`, describeValue(value[0], depth + 1, `${key}[0]`)]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  if (isRecord(value)) {
+    const entries = Object.entries(value).slice(0, 12);
+    if (entries.length === 0) return `- ${key}: {}`;
+    return entries
+      .map(([childKey, childValue]) => describeValue(childValue, depth + 1, `${key}.${childKey}`))
+      .join('\n');
+  }
+
+  return `- ${key}: ${typeOf(value)}`;
+}
+
+function typeOf(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  return typeof value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

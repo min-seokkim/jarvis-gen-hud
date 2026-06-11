@@ -18,10 +18,15 @@ const ALLOWED_COMPONENTS = [
 ] as const;
 
 const MAX_REPAIR_ATTEMPTS = 2;
+const MAX_DATA_BYTES = 50_000;
 
-export interface HudGenerationResult {
-  jsx: string;
+export interface HudEnvelope {
+  say: string;
   data: HudData;
+  jsx: string | null;
+}
+
+export interface HudGenerationResult extends HudEnvelope {
   repairCount: number;
 }
 
@@ -30,51 +35,87 @@ export interface GenerateHudOptions {
 }
 
 export const HUD_SYSTEM_PROMPT = [
-  'You generate a J.A.R.V.I.S HUD as constrained JSX.',
-  'Output JSON only in this exact shape: {"jsx":"<Panel ...>...</Panel>"}. No markdown.',
-  `Allowed components: ${ALLOWED_COMPONENTS.join(', ')}. Use only these components.`,
+  'You run a J.A.R.V.I.S HUD agent turn.',
+  'Output JSON only in this exact shape: {"say": string, "data": object, "jsx": string|null}. No markdown.',
+  'Use available terminal/code_execution/file tools to collect deterministic data for unfamiliar tasks.',
+  'Do not invent or correct numeric values. Put compact tool-derived JSON in data.',
+  'When possible, include data._source = { tool, command, exitCode }.',
+  'Keep data under 50KB. Summarize large tool output into compact JSON before returning it.',
+  `Allowed JSX components: ${ALLOWED_COMPONENTS.join(', ')}. Use only these components.`,
+  'Component props: Panel title state; ProgressBar value label state showPct; Steps steps; StatusPanel label value state hint; Gauge value min max unit label state; Stat label value unit delta state; Chart kind data unit label state; Waveform samples label state; Alert severity title message; Badge text state; KeyValue items.',
+  'Valid state/severity values are only stable, info, caution, critical.',
   'No imports. No arbitrary HTML elements. No inline style. No className.',
-  'Top-level JSX must be exactly one <Panel>...</Panel>.',
-  'Colors must be expressed only through state props: stable, info, caution, critical.',
-  'Numbers and series data must reference the given data object, e.g. data.build.progress and data.build.steps.',
-  'Do not hardcode or invent numeric values. Deterministic code supplies data.',
-  'If the request cannot be represented, return one Panel containing <Alert severity="info" title="Cannot render" message="..." />.',
+  'Top-level JSX must be exactly one <Panel>...</Panel> when jsx is not null.',
+  'Numbers and arrays in JSX props must reference data.*. Do not hardcode generated numbers or array literals.',
+  'For KeyValue, create data.summaryItems and use <KeyValue items={data.summaryItems} />.',
+  'For Steps, create data.steps and use <Steps steps={data.steps} />.',
+  'For Chart, create data.chartData and use <Chart data={data.chartData} />.',
+  'For Waveform, create data.samples and use <Waveform samples={data.samples} />.',
+  'For known build status seed data, return data with the provided build object and use <ProgressBar value={data.build.progress} ... /> and <Steps steps={data.build.steps} />.',
+  'If a HUD is not useful or data collection fails, return jsx:null and explain briefly in say.',
 ].join('\n');
 
 export function shouldGenerateHud(input: string): boolean {
   const normalized = input.toLocaleLowerCase();
-  return ['빌드', 'build', '상태', '보여', 'hud', '화면'].some((keyword) =>
-    normalized.includes(keyword),
-  );
+  const keywords = [
+    '빌드',
+    'build',
+    '상태',
+    '보여',
+    '확인',
+    '봐',
+    '얼마나',
+    '왜',
+    'why',
+    'hud',
+    '화면',
+    '프로젝트',
+    'project',
+    'repo',
+    'repository',
+    '저장소',
+    '의존성',
+    '취약점',
+    '디스크',
+    'disk',
+    '?',
+  ];
+  return keywords.some((keyword) => normalized.includes(keyword));
 }
 
 export async function generateHudJsx(
   task: string,
-  data: HudData,
+  seedData: HudData = {},
   options: GenerateHudOptions = {},
 ): Promise<HudGenerationResult> {
-  const raw = await completeHud([
-    { role: 'system', content: HUD_SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: [
-        `Task context: ${task}`,
-        describeHudDataShape(data),
-        'For the build status demo, prefer Steps + ProgressBar. Failed steps must be visible through the Steps status.',
-      ].join('\n\n'),
-    },
-  ], options);
+  const raw = await completeHud(
+    [
+      { role: 'system', content: HUD_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          `Task context: ${task}`,
+          `Project root for terminal/file tools: ${__JARVIS_PROJECT_ROOT__}`,
+          describeHudDataShape(seedData),
+          `Seed data JSON: ${stringifyForPrompt(seedData)}`,
+          'Return one JSON envelope only.',
+        ].join('\n\n'),
+      },
+    ],
+    options,
+  );
 
   try {
-    const jsx = extractHudJsx(raw);
-    assertValidHudJsx(jsx);
-    return { jsx, data, repairCount: 0 };
+    const envelope = extractHudEnvelope(raw);
+    assertValidHudEnvelope(envelope);
+    return { ...envelope, repairCount: 0 };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return repairHudJsx(
       {
+        say: '',
         jsx: raw,
-        data,
+        data: seedData,
         repairCount: 0,
       },
       message,
@@ -92,27 +133,30 @@ export async function repairHudJsx(
     return createHudFallback(previous.data, errorMessage, previous.repairCount);
   }
 
-  const raw = await completeHud([
-    { role: 'system', content: HUD_SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: [
-        'Repair this HUD JSX. It failed validation or rendering.',
-        `Error: ${errorMessage}`,
-        'Previous JSX:',
-        previous.jsx,
-        describeHudDataShape(previous.data),
-        'Return fixed JSON only. Use only allowed components/props and data references.',
-      ].join('\n\n'),
-    },
-  ], options);
+  const raw = await completeHud(
+    [
+      { role: 'system', content: HUD_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          'Repair this HUD envelope. It failed validation or rendering.',
+          `Error: ${errorMessage}`,
+          'Previous envelope/JSX:',
+          previous.jsx ?? JSON.stringify(previous),
+          describeHudDataShape(previous.data),
+          `Available data JSON: ${stringifyForPrompt(previous.data)}`,
+          'Return fixed JSON envelope only. Preserve deterministic data values. Use only allowed components/props and data references.',
+        ].join('\n\n'),
+      },
+    ],
+    options,
+  );
 
   try {
-    const jsx = extractHudJsx(raw);
-    assertValidHudJsx(jsx);
+    const envelope = extractHudEnvelope(raw);
+    assertValidHudEnvelope(envelope);
     return {
-      jsx,
-      data: previous.data,
+      ...envelope,
       repairCount: previous.repairCount + 1,
     };
   } catch (err) {
@@ -134,11 +178,41 @@ export function createHudFallback(
   repairCount = MAX_REPAIR_ATTEMPTS,
 ): HudGenerationResult {
   return {
+    say: 'HUD render failed.',
     jsx:
       '<Panel title="HUD fallback" state="critical"><Alert severity="critical" title="HUD render failed" message={data.errorMessage} /></Panel>',
     data: { ...data, errorMessage },
     repairCount,
   };
+}
+
+export function extractHudEnvelope(raw: string): HudEnvelope {
+  const trimmed = raw.trim();
+  const candidates = [
+    trimmed,
+    extractCodeBlock(trimmed),
+    extractJsonObject(trimmed),
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = tryParseJson(candidate);
+    if (!parsed) continue;
+
+    if (
+      typeof parsed.say === 'string' &&
+      isRecord(parsed.data) &&
+      (typeof parsed.jsx === 'string' || parsed.jsx === null)
+    ) {
+      return {
+        say: parsed.say,
+        data: capData(parsed.data),
+        jsx: typeof parsed.jsx === 'string' ? parsed.jsx.trim() : null,
+      };
+    }
+  }
+
+  const jsx = extractHudJsx(trimmed);
+  return { say: '', data: {}, jsx };
 }
 
 export function extractHudJsx(raw: string): string {
@@ -156,6 +230,13 @@ export function extractHudJsx(raw: string): string {
     return trimmed;
   }
   throw new Error('HUD response did not contain JSX.');
+}
+
+export function assertValidHudEnvelope(envelope: HudEnvelope): void {
+  capData(envelope.data);
+  if (envelope.jsx !== null) {
+    assertValidHudJsx(envelope.jsx);
+  }
 }
 
 export function assertValidHudJsx(jsx: string): void {
@@ -181,8 +262,14 @@ export function assertValidHudJsx(jsx: string): void {
   if (/<\/?[a-z][\w-]*\b/.test(trimmed)) {
     throw new Error('HUD JSX cannot use arbitrary HTML elements.');
   }
-  if (/\b(?:value|steps|samples|data)\s*=\s*{\s*\d/.test(trimmed)) {
+  if (/\b(?:value|steps|samples|data|items)\s*=\s*{\s*\d/.test(trimmed)) {
     throw new Error('HUD JSX must reference deterministic data instead of hardcoded numbers.');
+  }
+  if (/\b(?:items|steps|samples|data)\s*=\s*{\s*(?!data\.)/.test(trimmed)) {
+    throw new Error('HUD array props must reference data.* directly.');
+  }
+  if (/\b(?:state|severity)\s*=\s*"(?!stable"|info"|caution"|critical")/.test(trimmed)) {
+    throw new Error('HUD state props must be stable, info, caution, or critical.');
   }
 
   for (const tag of trimmed.matchAll(/<\/?([A-Z][A-Za-z0-9]*)\b/g)) {
@@ -203,13 +290,11 @@ async function completeHud(
   return output;
 }
 
-function tryParseJson(source: string): { jsx?: unknown } | undefined {
+function tryParseJson(source: string): Record<string, unknown> | undefined {
   if (!source) return undefined;
   try {
     const value = JSON.parse(source) as unknown;
-    if (value && typeof value === 'object') {
-      return value as { jsx?: unknown };
-    }
+    if (isRecord(value)) return value;
   } catch {
     return undefined;
   }
@@ -219,4 +304,30 @@ function tryParseJson(source: string): { jsx?: unknown } | undefined {
 function extractCodeBlock(source: string): string {
   const match = source.match(/```(?:json|jsx|tsx)?\s*([\s\S]*?)```/i);
   return match?.[1]?.trim() ?? source;
+}
+
+function extractJsonObject(source: string): string {
+  const start = source.indexOf('{');
+  const end = source.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return source;
+  return source.slice(start, end + 1);
+}
+
+function stringifyForPrompt(data: HudData): string {
+  return JSON.stringify(capData(data));
+}
+
+function capData(data: HudData): HudData {
+  const encoded = JSON.stringify(data);
+  if (encoded.length <= MAX_DATA_BYTES) return data;
+
+  return {
+    _truncated: true,
+    _originalBytes: encoded.length,
+    preview: encoded.slice(0, MAX_DATA_BYTES),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
