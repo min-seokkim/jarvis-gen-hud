@@ -63,6 +63,10 @@ export default defineConfig(({ mode }) => {
           // 프록시가 타깃으로 보내는 요청에 Authorization을 정적으로 붙인다.
           headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
         },
+        '/ws': {
+          target: env.LIVE_HUD_TARGET || 'ws://127.0.0.1:8765',
+          ws: true,
+        },
       },
     },
     test: {

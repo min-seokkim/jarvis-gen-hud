@@ -1,6 +1,11 @@
 import type { HudData } from './hudData';
 import { describeHudDataShape } from './hudData';
 import { streamResponse, type HermesToolEvent } from './hermes';
+import {
+  LIVE_HUD_SOURCES,
+  normalizeLiveHudSpec,
+  type LiveHudSpec,
+} from './liveHud';
 
 const ALLOWED_COMPONENTS = [
   'Panel',
@@ -30,6 +35,7 @@ export interface HudDesign {
 export interface HudEnvelope {
   say: string;
   design: HudDesign | null;
+  live: LiveHudSpec | null;
   data: HudData;
   jsx: string | null;
 }
@@ -46,12 +52,14 @@ export interface GenerateHudOptions {
 
 export const HUD_SYSTEM_PROMPT = [
   'You run a J.A.R.V.I.S HUD agent turn.',
-  'Output JSON only in this exact key order: {"say": string, "design": object|null, "data": object, "jsx": string|null}. No markdown.',
+  'Output JSON only in this exact key order: {"say": string, "design": object|null, "live": object|null, "data": object, "jsx": string|null}. No markdown.',
   'Use available terminal/code_execution/file tools to collect deterministic data for unfamiliar tasks.',
   'Do not invent or correct numeric values. Put compact tool-derived JSON in data.',
   'When possible, include data._source = { tool, command, exitCode }.',
   'Keep data under 50KB. Summarize large tool output into compact JSON before returning it.',
   'Before jsx, fill design = { data_kind, primitives, layout, why }. This is your visible design decision record.',
+  `If the HUD should keep updating without another LLM call, set live = { source, params, intervalMs }. Allowed live sources: ${LIVE_HUD_SOURCES.join(', ')}. Otherwise set live:null.`,
+  'Live source guide: disk -> path capacity data for Gauge/PieChart; project -> git status; build_sim -> simulated build Steps/ProgressBar; proc_watch -> manual PID polling.',
   'design.primitives must contain component names only, such as "Chart" or "ProgressBar"; never include props like "Chart kind=bar" in primitives.',
   'Archetype map: progress/pipeline -> Steps + ProgressBar; utilization/capacity -> Gauge + Stat; breakdown/composition -> PieChart + Stat; timeseries/trend -> Chart kind="line" or kind="area"; comparison/ranking -> Chart kind="bar"; signal/waveform -> Waveform; status/overview -> StatusPanel + Badge + KeyValue.',
   'Graphic density: choose 2-3 complementary primitives, lead with a graphic primitive, and use KeyValue only as supporting detail. Avoid repeating the same label-table layout for different tasks.',
@@ -126,6 +134,7 @@ export async function generateHudJsx(
       {
         say: '',
         design: null,
+        live: null,
         jsx: raw,
         data: seedData,
         repairCount: 0,
@@ -192,6 +201,7 @@ export function createHudFallback(
       layout: 'single critical fallback panel',
       why: 'Generated HUD failed validation or runtime rendering.',
     },
+    live: null,
     jsx:
       '<Panel title="HUD fallback" state="critical"><Alert severity="critical" title="HUD render failed" message={data.errorMessage} /></Panel>',
     data: { ...data, errorMessage },
@@ -219,6 +229,7 @@ export function extractHudEnvelope(raw: string): HudEnvelope {
       return {
         say: parsed.say,
         design: normalizeDesign(parsed.design),
+        live: normalizeLiveHudSpec(parsed.live),
         data: capData(parsed.data),
         jsx: typeof parsed.jsx === 'string' ? parsed.jsx.trim() : null,
       };
@@ -234,6 +245,7 @@ export function extractHudEnvelope(raw: string): HudEnvelope {
       layout: 'legacy JSX extraction',
       why: 'Recovered JSX from a non-envelope response.',
     },
+    live: null,
     data: {},
     jsx,
   };

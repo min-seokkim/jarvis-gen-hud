@@ -18,6 +18,11 @@ import {
   streamResponse,
   type HermesToolEvent,
 } from './lib/hermes';
+import {
+  LiveHudClient,
+  type LiveHudDataMessage,
+  type LiveHudEndMessage,
+} from './lib/liveHud';
 import type { JarvisStatus } from './types';
 import './styles/app.css';
 import './hud/styles.css';
@@ -44,6 +49,8 @@ function ChatApp() {
   const [hud, setHud] = useState<HudRenderState>({ phase: 'idle' });
   const abortRef = useRef<AbortController | null>(null);
   const hudAbortRef = useRef<AbortController | null>(null);
+  const liveHudRef = useRef<LiveHudClient | null>(null);
+  const activeLiveSubRef = useRef<string | null>(null);
   const hudRef = useRef<HudRenderState>(hud);
   const lastRenderErrorRef = useRef<string | null>(null);
 
@@ -149,6 +156,7 @@ function ChatApp() {
     setStatus('idle');
     setStatusDetail(undefined);
     lastRenderErrorRef.current = null;
+    unsubscribeLiveHud();
   }
 
   const handleToolEvent = useCallback((event: HermesToolEvent) => {
@@ -157,12 +165,13 @@ function ChatApp() {
     setStatusDetail(event.phase === 'call' ? toolName : `${toolName} 완료`);
   }, []);
 
-  const setRenderedHud = useCallback((result: HudGenerationResult) => {
+  function setRenderedHud(result: HudGenerationResult) {
     if (import.meta.env.DEV && result.design) {
       console.debug('[HUD design]', result.design);
     }
     setHud(setRenderedHudState(result));
-  }, []);
+    syncLiveHudSubscription(result);
+  }
 
   async function repairRenderedHud(
     current: HudGenerationResult,
@@ -247,6 +256,7 @@ function ChatApp() {
       {
         say: '',
         design: current.design ?? null,
+        live: current.live ?? null,
         jsx: current.jsx,
         data: current.data,
         repairCount: current.repairCount ?? 0,
@@ -254,6 +264,74 @@ function ChatApp() {
       message,
     );
   }
+
+  function syncLiveHudSubscription(result: HudGenerationResult) {
+    unsubscribeLiveHud();
+    if (result.jsx === null || !result.live) return;
+    activeLiveSubRef.current = liveHudRef.current?.subscribe(result.live) ?? null;
+  }
+
+  function unsubscribeLiveHud() {
+    const subId = activeLiveSubRef.current;
+    if (subId) {
+      liveHudRef.current?.unsubscribe(subId);
+      activeLiveSubRef.current = null;
+    }
+  }
+
+  const handleLiveHudData = useCallback((message: LiveHudDataMessage) => {
+    if (message.subId !== activeLiveSubRef.current) return;
+    setHud((current) => {
+      if (current.phase !== 'rendered' || !current.jsx) return current;
+      return {
+        ...current,
+        data: message.data,
+        liveStatus: 'connected',
+      };
+    });
+  }, []);
+
+  const markLiveHudCaution = useCallback((reason: string) => {
+    setStatus('caution');
+    setStatusDetail(reason);
+    setHud((current) => {
+      if (current.phase !== 'rendered' || !current.data) return current;
+      return {
+        ...current,
+        liveStatus: 'ended',
+        data: markDataCaution(current.data, reason),
+      };
+    });
+  }, []);
+
+  const handleLiveHudEnd = useCallback(
+    (message: LiveHudEndMessage) => {
+      if (message.subId !== activeLiveSubRef.current) return;
+      activeLiveSubRef.current = null;
+      markLiveHudCaution(message.reason ?? 'live_hud_ended');
+    },
+    [markLiveHudCaution],
+  );
+
+  useEffect(() => {
+    liveHudRef.current = new LiveHudClient({
+      onData: handleLiveHudData,
+      onEnd: handleLiveHudEnd,
+      onError: (message) => markLiveHudCaution(message),
+      onConnectionChange: (connected) => {
+        if (connected) {
+          setStatus('idle');
+          setStatusDetail(undefined);
+        } else if (activeLiveSubRef.current) {
+          markLiveHudCaution('orchestrator_disconnected');
+        }
+      },
+    });
+    return () => {
+      liveHudRef.current?.close();
+      liveHudRef.current = null;
+    };
+  }, [handleLiveHudData, handleLiveHudEnd, markLiveHudCaution]);
 
   return (
     <div className="app-shell">
@@ -308,6 +386,7 @@ function setRenderedHudState(result: HudGenerationResult): HudRenderState {
       phase: 'idle',
       data: result.data,
       design: result.design,
+      live: result.live,
       message: result.say || 'HUD not needed for this request.',
       repairCount: result.repairCount,
     };
@@ -317,6 +396,7 @@ function setRenderedHudState(result: HudGenerationResult): HudRenderState {
     phase: 'rendered',
     jsx: result.jsx,
     design: result.design,
+    live: result.live,
     data: result.data,
     repairCount: result.repairCount,
   };
@@ -397,6 +477,20 @@ function extractEnvelopeSay(content: string): string {
 
 function hudConversationName(conversation: string): string {
   return `${conversation}-hud`;
+}
+
+function markDataCaution(
+  data: Record<string, unknown>,
+  reason: string,
+): Record<string, unknown> {
+  return {
+    ...data,
+    state: data.state ?? 'caution',
+    live: {
+      status: 'caution',
+      reason,
+    },
+  };
 }
 
 function loadConversation(): string {

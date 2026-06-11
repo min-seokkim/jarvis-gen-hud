@@ -176,6 +176,84 @@ test('does not leak HUD envelope JSON into the chat panel', async ({ page }) => 
   await expect(page.getByText(/<Panel/)).toHaveCount(0);
 });
 
+test('updates rendered HUD data from live WebSocket without regenerating JSX', async ({
+  page,
+}) => {
+  const responseRequests: Array<Record<string, unknown>> = [];
+  await page.route('**/v1/responses', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    responseRequests.push(body);
+    if (String(body.instructions ?? '').includes('J.A.R.V.I.S HUD agent')) {
+      await route.fulfill(
+        responseSse(
+          envelope({
+            say: 'Live build HUD ready.',
+            design: {
+              data_kind: 'progress/pipeline',
+              primitives: ['Steps', 'ProgressBar'],
+              layout: 'live build progress',
+              why: 'Build progress changes over time.',
+            },
+            live: {
+              source: 'build_sim',
+              params: { stepSeconds: 1 },
+              intervalMs: 1000,
+            },
+            data: {
+              progress: 0,
+              state: 'info',
+              steps: [
+                { name: 'Install deps', status: 'active' },
+                { name: 'Typecheck', status: 'pending' },
+              ],
+            },
+            jsx:
+              '<Panel title="Live Build" state={data.state}><Steps steps={data.steps} /><ProgressBar label="Build progress" value={data.progress} state={data.state} showPct /></Panel>',
+          }),
+        ),
+      );
+      return;
+    }
+    await route.fulfill(responseSse('대화 응답입니다.'));
+  });
+
+  const subscriptions: string[] = [];
+  await page.routeWebSocket('/ws', (ws) => {
+    ws.onMessage((message) => {
+      const payload = JSON.parse(String(message)) as { subId: string };
+      subscriptions.push(String(payload.subId));
+      ws.send(
+        JSON.stringify({
+          type: 'hud.data',
+          subId: payload.subId,
+          data: {
+            progress: 50,
+            state: 'info',
+            steps: [
+              { name: 'Install deps', status: 'done' },
+              { name: 'Typecheck', status: 'active' },
+            ],
+          },
+        }),
+      );
+    });
+  });
+
+  await page.goto('/');
+  await submitCommand(page, '빌드 상태 보여줘');
+  await revealHudPanel(page);
+
+  await expect(page.getByText('Live Build')).toBeVisible();
+  await expect(page.getByText('50%')).toBeVisible();
+  await expect(page.getByText('Typecheck')).toBeVisible();
+  expect(subscriptions).toHaveLength(1);
+  expect(
+    responseRequests.filter((request) =>
+      String(request.instructions ?? '').includes('J.A.R.V.I.S HUD agent'),
+    ),
+  ).toHaveLength(1);
+});
+
 test('renders disk usage as a pie-style HUD, not a flat table', async ({ page }) => {
   await mockHermes(page, [
     envelope({
@@ -390,6 +468,7 @@ function envelope(value: {
         why: string;
       }
     | null;
+  live?: object | null;
   data: object;
   jsx: string | null;
 }): string {
