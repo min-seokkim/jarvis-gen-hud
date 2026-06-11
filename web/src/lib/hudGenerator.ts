@@ -47,6 +47,8 @@ export const HUD_SYSTEM_PROMPT = [
   'No imports. No arbitrary HTML elements. No inline style. No className.',
   'Top-level JSX must be exactly one <Panel>...</Panel> when jsx is not null.',
   'Numbers and arrays in JSX props must reference data.*. Do not hardcode generated numbers or array literals.',
+  'A HUD is not a label table. Do not return a KeyValue-only HUD.',
+  'For quantitative tasks, include at least one visual primitive: Gauge, ProgressBar, Chart, Stat, Steps, or StatusPanel. KeyValue may be supporting detail only.',
   'For KeyValue, create data.summaryItems and use <KeyValue items={data.summaryItems} />.',
   'For Steps, create data.steps and use <Steps steps={data.steps} />.',
   'For Chart, create data.chartData and use <Chart data={data.chartData} />.',
@@ -272,10 +274,21 @@ export function assertValidHudJsx(jsx: string): void {
     throw new Error('HUD state props must be stable, info, caution, or critical.');
   }
 
+  const components = new Set<string>();
   for (const tag of trimmed.matchAll(/<\/?([A-Z][A-Za-z0-9]*)\b/g)) {
+    components.add(tag[1]);
     if (!ALLOWED_COMPONENTS.includes(tag[1] as (typeof ALLOWED_COMPONENTS)[number])) {
       throw new Error(`HUD JSX uses disallowed component: ${tag[1]}.`);
     }
+  }
+
+  if (
+    components.has('KeyValue') &&
+    [...components].every((component) => component === 'Panel' || component === 'KeyValue')
+  ) {
+    throw new Error(
+      'HUD cannot be KeyValue-only. Add a visual primitive such as Gauge, ProgressBar, Chart, Stat, Steps, StatusPanel, or Alert.',
+    );
   }
 }
 

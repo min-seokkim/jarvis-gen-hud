@@ -40,9 +40,9 @@ export interface StatProps {
 }
 
 export interface StepsProps {
-  steps?: { name: string; status: StepStatus }[];
-  items?: { name: string; status: StepStatus }[];
-  data?: { name: string; status: StepStatus }[];
+  steps?: StepItem[];
+  items?: StepItem[];
+  data?: StepItem[];
 }
 
 export interface ChartProps {
@@ -78,6 +78,14 @@ export interface KeyValueProps {
 }
 
 const DEFAULT_STATE: State = 'info';
+
+type StepItem = {
+  name?: string;
+  label?: string;
+  status?: StepStatus;
+  state?: State;
+  description?: string;
+};
 
 export function Panel({
   title,
@@ -169,6 +177,8 @@ export function Stat({
   delta,
   state = DEFAULT_STATE,
 }: StatProps) {
+  const numericDelta = typeof delta === 'number' ? delta : undefined;
+
   return (
     <div className={`hud-stat hud-state-${state}`}>
       <div className="hud-label">{label}</div>
@@ -176,10 +186,10 @@ export function Stat({
         <span>{value}</span>
         {unit && <small>{unit}</small>}
       </div>
-      {delta !== undefined && (
-        <div className={`hud-delta ${delta >= 0 ? 'is-up' : 'is-down'}`}>
-          {delta >= 0 ? '+' : ''}
-          {delta}
+      {numericDelta !== undefined && (
+        <div className={`hud-delta ${numericDelta >= 0 ? 'is-up' : 'is-down'}`}>
+          {numericDelta >= 0 ? '+' : ''}
+          {numericDelta}
         </div>
       )}
     </div>
@@ -195,12 +205,17 @@ export function Steps({ steps, items, data }: StepsProps) {
 
   return (
     <ol className="hud-steps">
-      {safeSteps.map((step) => (
-        <li key={`${step.name}-${step.status}`} className={`is-${step.status}`}>
-          <span className="hud-step-dot" aria-hidden="true" />
-          <span>{step.name}</span>
-        </li>
-      ))}
+      {safeSteps.map((step) => {
+        const name = step.name ?? step.label ?? 'Untitled step';
+        const status = normalizeStepStatus(step.status ?? step.state);
+
+        return (
+          <li key={`${name}-${status}`} className={`is-${status}`}>
+            <span className="hud-step-dot" aria-hidden="true" />
+            <span>{name}</span>
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -373,4 +388,15 @@ function waveformPoints(samples: number[]): string | undefined {
 
 function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : [];
+}
+
+function normalizeStepStatus(status: StepItem['status'] | StepItem['state']): StepStatus {
+  if (status === 'stable') return 'done';
+  if (status === 'info') return 'active';
+  if (status === 'caution') return 'active';
+  if (status === 'critical') return 'failed';
+  if (status === 'done' || status === 'active' || status === 'pending' || status === 'failed') {
+    return status;
+  }
+  return 'pending';
 }

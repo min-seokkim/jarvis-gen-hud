@@ -36,7 +36,7 @@ describe('extractHudEnvelope', () => {
       JSON.stringify({
         say: 'done',
         data: { count: 2, summaryItems: [{ k: 'count', v: '2' }] },
-        jsx: '<Panel title="X" state="info"><KeyValue items={data.summaryItems} /></Panel>',
+        jsx: '<Panel title="X" state="info"><StatusPanel label="Count" value={data.count} state="info" /><KeyValue items={data.summaryItems} /></Panel>',
       }),
     );
 
@@ -79,5 +79,13 @@ describe('assertValidHudJsx', () => {
         '<Panel title="Bad" state="ok"><Alert severity="info" title="x" /></Panel>',
       ),
     ).toThrow(/state props/);
+  });
+
+  it('rejects KeyValue-only label tables', () => {
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="Flat" state="info"><KeyValue items={data.summaryItems} /></Panel>',
+      ),
+    ).toThrow(/KeyValue-only/);
   });
 });

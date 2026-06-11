@@ -68,6 +68,9 @@ Rules:
 - No imports, no raw HTML, no inline style, no className, no window/document/fetch/eval.
 - JSX numeric values and arrays must reference data.*, never hardcode generated numbers or arrays.
 - Do not use array literals in JSX props.
+- A HUD is not a label table. Do not return a KeyValue-only HUD.
+- For quantitative tasks, include at least one visual primitive:
+  Gauge, ProgressBar, Chart, Stat, Steps, or StatusPanel. KeyValue may be supporting detail only.
 - If a HUD is not useful or data collection fails, set jsx to null and explain in say.
 """.strip()
 
@@ -220,9 +223,12 @@ def assert_valid_hud_jsx(jsx: str) -> None:
     if re.search(r"</?[a-z][\w-]*\b", trimmed):
         raise ValueError("HUD JSX cannot use arbitrary HTML elements.")
 
+    components = set()
     for tag in re.finditer(r"</?([A-Z][A-Za-z0-9]*)\b", trimmed):
-        if tag.group(1) not in ALLOWED_COMPONENTS:
-            raise ValueError(f"HUD JSX uses disallowed component: {tag.group(1)}.")
+        component = tag.group(1)
+        components.add(component)
+        if component not in ALLOWED_COMPONENTS:
+            raise ValueError(f"HUD JSX uses disallowed component: {component}.")
 
     if re.search(r"\b(?:value|steps|samples|data)\s*=\s*\{\s*\d", trimmed):
         raise ValueError("HUD JSX must reference deterministic data instead of hardcoded numbers.")
@@ -230,6 +236,8 @@ def assert_valid_hud_jsx(jsx: str) -> None:
         raise ValueError("Array props must reference data.* directly.")
     if re.search(r"\b(?:state|severity)\s*=\s*\"(?!stable\"|info\"|caution\"|critical\")", trimmed):
         raise ValueError("State props must use stable, info, caution, or critical.")
+    if "KeyValue" in components and components.issubset({"Panel", "KeyValue"}):
+        raise ValueError("HUD cannot be KeyValue-only.")
 
 
 def preview(value: Any) -> Any:

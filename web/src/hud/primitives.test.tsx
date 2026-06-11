@@ -22,7 +22,12 @@ describe('HUD primitives', () => {
   it('accepts common generated aliases for collection props', () => {
     render(
       <>
-        <Steps items={[{ name: 'Build bundle', status: 'active' }]} />
+        <Steps
+          items={[
+            { name: 'Build bundle', status: 'active' },
+            { label: 'Generated label', state: 'stable' },
+          ]}
+        />
         <KeyValue data={[{ k: 'scope', v: 'hud' }]} />
         <Chart points={[{ x: 'now', y: 1 }]} />
         <Waveform data={[0, 1, 0]} />
@@ -30,6 +35,7 @@ describe('HUD primitives', () => {
     );
 
     expect(screen.getByText('Build bundle')).toBeInTheDocument();
+    expect(screen.getByText('Generated label')).toBeInTheDocument();
     expect(screen.getByText('scope')).toBeInTheDocument();
     expect(screen.getByText('hud')).toBeInTheDocument();
     expect(screen.getAllByRole('img')).toHaveLength(2);
