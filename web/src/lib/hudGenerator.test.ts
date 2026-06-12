@@ -3,30 +3,25 @@ import {
   assertValidHudEnvelope,
   assertValidHudJsx,
   extractHudEnvelope,
-  shouldGenerateHud,
+  HUD_SYSTEM_PROMPT,
 } from './hudGenerator';
 
-describe('shouldGenerateHud', () => {
-  it('detects Korean build-status HUD requests', () => {
-    expect(shouldGenerateHud('빌드 상태 보여줘')).toBe(true);
-  });
-
-  it('detects English HUD requests', () => {
-    expect(shouldGenerateHud('show build status')).toBe(true);
-  });
-
-  it('detects project-status HUD requests', () => {
-    expect(shouldGenerateHud('이 프로젝트 상태 보여줘')).toBe(true);
-    expect(shouldGenerateHud('show project status')).toBe(true);
-  });
-
-  it('detects unfamiliar action-style requests', () => {
-    expect(shouldGenerateHud('디스크 사용량 확인해줘')).toBe(true);
-    expect(shouldGenerateHud('why is the repo dirty?')).toBe(true);
-  });
-
-  it('ignores regular chat', () => {
-    expect(shouldGenerateHud('오늘 일정 정리해줘')).toBe(false);
+describe('HUD_SYSTEM_PROMPT', () => {
+  it('pins the exact push schema of every live source', () => {
+    // Live pushes replace data wholesale; if the JSX references keys the
+    // source never pushes, the HUD silently blanks on the first tick.
+    expect(HUD_SYSTEM_PROMPT).toContain(
+      'disk -> {path,totalBytes,usedBytes,freeBytes,usedPct,min,max,state,summaryItems,slices,_source}',
+    );
+    expect(HUD_SYSTEM_PROMPT).toContain(
+      'project -> {root,branch,changedFiles,stagedFiles,unstagedFiles,untrackedFiles,files,summaryItems,_source}',
+    );
+    expect(HUD_SYSTEM_PROMPT).toContain(
+      'build_sim -> {startedAt,elapsedSec,progress,state,steps,summaryItems,_source}',
+    );
+    expect(HUD_SYSTEM_PROMPT).toContain(
+      'proc_watch -> {pid,running,state,summaryItems,_source}',
+    );
   });
 });
 
@@ -178,5 +173,67 @@ describe('assertValidHudJsx', () => {
         '<Panel title="Narrative" state="info"><Badge text="Ready" state="stable" /></Panel>',
       ),
     ).toThrow(/visual primitive/);
+  });
+
+  it('allows forbidden keywords inside attribute strings', () => {
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="git fetch 결과" state="info"><Stat label="export bundle" value={data.count} state="info" /></Panel>',
+      ),
+    ).not.toThrow();
+  });
+
+  it('rejects constructor escapes hidden in expression strings', () => {
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="x" state="info"><Stat label="y" value={\'\'["constructor"]["constructor"]("window.alert(1)")()} state="info" /></Panel>',
+      ),
+    ).toThrow(/forbidden/);
+  });
+
+  it('rejects computed member access built from string concatenation', () => {
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="x" state="info"><Stat label="y" value={\'\'["constr" + "uctor"]} state="info" /></Panel>',
+      ),
+    ).toThrow(/numeric indexing/);
+  });
+
+  it('rejects unicode-escaped identifiers', () => {
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="x" state="info"><Stat label="y" value={\\u0064ata.count} state="info" /></Panel>',
+      ),
+    ).toThrow(/escape sequences/);
+  });
+
+  it('rejects arrow functions and template literals', () => {
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="x" state="info"><Stat label="y" value={(() => 1)()} state="info" /></Panel>',
+      ),
+    ).toThrow(/forbidden/);
+
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="x" state="info"><Stat label="y" value={`1`} state="info" /></Panel>',
+      ),
+    ).toThrow(/template literals/);
+  });
+
+  it('rejects function bodies created via method shorthand', () => {
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="x" state="info"><Stat label="y" value={({ a() { return 1 } }).a()} state="info" /></Panel>',
+      ),
+    ).toThrow(/function bodies/);
+  });
+
+  it('allows numeric indexing into data arrays', () => {
+    expect(() =>
+      assertValidHudJsx(
+        '<Panel title="Top slice" state="info"><Stat label="Largest" value={data.slices[0].value} state="info" /></Panel>',
+      ),
+    ).not.toThrow();
   });
 });

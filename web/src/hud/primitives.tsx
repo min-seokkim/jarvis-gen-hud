@@ -85,6 +85,7 @@ export interface KeyValueProps {
 }
 
 const DEFAULT_STATE: State = 'info';
+const SERIES_PALETTE_SIZE = 5;
 
 type PieSlice = {
   label?: string;
@@ -134,6 +135,7 @@ export function ProgressBar({
   showPct = false,
 }: ProgressBarProps) {
   const normalized = toPercent(value ?? 0);
+  const ticks = [0, 25, 50, 75, 100];
 
   return (
     <div className={`hud-progress hud-state-${state}`}>
@@ -144,6 +146,11 @@ export function ProgressBar({
         </div>
       )}
       <progress value={normalized} max={100} aria-label={label} />
+      <div className="hud-progress-scale" aria-hidden="true">
+        {ticks.map((tick) => (
+          <span key={tick} style={{ insetInlineStart: `${tick}%` }} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -161,10 +168,23 @@ export function Gauge({
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - pct);
+  const pointer = gaugePointer(pct);
 
   return (
     <div className={`hud-gauge hud-state-${state}`}>
       <svg viewBox="0 0 120 120" role="img" aria-label={label}>
+        <g className="hud-gauge-ticks" aria-hidden="true">
+          {gaugeTicks(16).map((tick) => (
+            <line
+              key={tick.index}
+              className={tick.major ? 'is-major' : undefined}
+              x1={tick.x1}
+              y1={tick.y1}
+              x2={tick.x2}
+              y2={tick.y2}
+            />
+          ))}
+        </g>
         <circle className="hud-gauge-track" cx="60" cy="60" r={radius} />
         <circle
           className="hud-gauge-fill"
@@ -173,6 +193,13 @@ export function Gauge({
           r={radius}
           strokeDasharray={`${circumference} ${circumference}`}
           strokeDashoffset={dashOffset}
+        />
+        <line
+          className="hud-gauge-pointer"
+          x1={pointer.x1}
+          y1={pointer.y1}
+          x2={pointer.x2}
+          y2={pointer.y2}
         />
       </svg>
       <div className="hud-gauge-readout">
@@ -194,9 +221,17 @@ export function PieChart({
     .map((slice, index) => ({
       label: slice.label ?? slice.name ?? `Slice ${index + 1}`,
       value: Number.isFinite(slice.value) ? Number(slice.value) : 0,
-      state: slice.state ?? cycleState(index),
+      state: slice.state,
     }))
-    .filter((slice) => slice.value > 0);
+    .filter((slice) => slice.value > 0)
+    // State colors carry meaning (caution/critical are warnings), so slices
+    // without an explicit state get a neutral series palette instead.
+    .map((slice, index) => ({
+      ...slice,
+      tone: slice.state
+        ? `hud-state-${slice.state}`
+        : `hud-series-${index % SERIES_PALETTE_SIZE}`,
+    }));
   const total = safeSlices.reduce((sum, slice) => sum + slice.value, 0);
   const radius = 38;
   const circumference = 2 * Math.PI * radius;
@@ -226,11 +261,16 @@ export function PieChart({
       {label && <div className="hud-label">{label}</div>}
       <div className="hud-pie-body">
         <svg viewBox="0 0 120 120" role="img" aria-label={label}>
+          <g className="hud-pie-radar" aria-hidden="true">
+            <circle cx="60" cy="60" r="18" />
+            <circle cx="60" cy="60" r="38" />
+            <path d="M60 18 V102 M18 60 H102 M30 30 L90 90 M90 30 L30 90" />
+          </g>
           <circle className="hud-pie-track" cx="60" cy="60" r={radius} />
-          {segments.map((slice) => (
+          {segments.map((slice, index) => (
             <circle
-              key={slice.label}
-              className={`hud-pie-segment hud-state-${slice.state}`}
+              key={`${index}-${slice.label}`}
+              className={`hud-pie-segment ${slice.tone}`}
               cx="60"
               cy="60"
               r={radius}
@@ -244,9 +284,9 @@ export function PieChart({
           </text>
         </svg>
         <dl className="hud-pie-legend">
-          {segments.map((slice) => (
-            <div key={slice.label}>
-              <dt className={`hud-state-${slice.state}`}>
+          {segments.map((slice, index) => (
+            <div key={`${index}-${slice.label}`}>
+              <dt className={slice.tone}>
                 <span aria-hidden="true" />
                 {slice.label}
               </dt>
@@ -294,12 +334,12 @@ export function Steps({ steps, items, data }: StepsProps) {
 
   return (
     <ol className="hud-steps">
-      {safeSteps.map((step) => {
+      {safeSteps.map((step, index) => {
         const name = step.name ?? step.label ?? 'Untitled step';
         const status = normalizeStepStatus(step.status ?? step.state);
 
         return (
-          <li key={`${name}-${status}`} className={`is-${status}`}>
+          <li key={`${index}-${name}`} className={`is-${status}`}>
             <span className="hud-step-dot" aria-hidden="true" />
             <span>{name}</span>
           </li>
@@ -317,7 +357,9 @@ export function Chart({
   label,
   state = DEFAULT_STATE,
 }: ChartProps) {
-  const points = chartPoints(asArray(data ?? pointData));
+  const entries = asArray(data ?? pointData);
+  const points = chartPoints(entries);
+  const baselineY = chartBaselineY(entries.map((point) => point.y));
 
   return (
     <div className={`hud-chart hud-state-${state}`}>
@@ -332,15 +374,16 @@ export function Chart({
       ) : (
         <svg viewBox="0 0 160 72" role="img" aria-label={label}>
           <path className="hud-chart-grid" d="M0 18 H160 M0 36 H160 M0 54 H160" />
+          <path className="hud-chart-axis" d="M8 8 V64 H152" />
           {kind === 'bar' ? (
             points.map((point, index) => (
               <rect
                 key={`${point.x}-${point.y}-${index}`}
                 className="hud-chart-bar"
                 x={point.x - point.barWidth / 2}
-                y={point.y}
+                y={Math.min(point.y, baselineY)}
                 width={point.barWidth}
-                height={72 - point.y}
+                height={Math.max(1, Math.abs(baselineY - point.y))}
                 rx="2"
               />
             ))
@@ -353,8 +396,28 @@ export function Chart({
                 />
               )}
               <path className="hud-chart-line" d={linePath(points)} />
+              <g className="hud-chart-points">
+                {points.map((point, index) => (
+                  <circle
+                    key={`${point.x}-${point.y}-${index}`}
+                    cx={point.x}
+                    cy={point.y}
+                    r="2.4"
+                  />
+                ))}
+              </g>
             </>
           )}
+          <g className="hud-chart-xlabels" aria-hidden="true">
+            <text x="8" y="71">
+              {String(entries[0].x)}
+            </text>
+            {entries.length > 1 && (
+              <text x="152" y="71" textAnchor="end">
+                {String(entries[entries.length - 1].x)}
+              </text>
+            )}
+          </g>
         </svg>
       )}
     </div>
@@ -374,6 +437,7 @@ export function Waveform({
       {label && <div className="hud-label">{label}</div>}
       {points ? (
         <svg viewBox="0 0 160 56" role="img" aria-label={label}>
+          <path className="hud-waveform-band" d="M0 14 H160 M0 42 H160" />
           <path className="hud-waveform-mid" d="M0 28 H160" />
           <polyline className="hud-waveform-line" points={points} />
         </svg>
@@ -406,8 +470,8 @@ export function KeyValue({ items, data }: KeyValueProps) {
 
   return (
     <dl className="hud-key-value">
-      {safeItems.map((item) => (
-        <div key={item.k ?? item.label}>
+      {safeItems.map((item, index) => (
+        <div key={`${index}-${item.k ?? item.label}`}>
           <dt>{item.k ?? item.label}</dt>
           <dd>{item.v ?? item.value}</dd>
         </div>
@@ -454,6 +518,54 @@ function chartPoints(data: ChartProps['data']): ChartPoint[] {
   }));
 }
 
+function chartBaselineY(values: number[]): number {
+  if (values.length === 0) return 64;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min >= 0) return 64;
+  if (max <= 0) return 8;
+  return 64 - ((0 - min) / (max - min)) * 56;
+}
+
+function gaugeTicks(count: number): {
+  index: number;
+  major: boolean;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}[] {
+  return Array.from({ length: count }, (_, index) => {
+    const angle = ((index / count) * 360 - 90) * (Math.PI / 180);
+    const major = index % 4 === 0;
+    const outer = 54;
+    const inner = major ? 47 : 50;
+    return {
+      index,
+      major,
+      x1: 60 + Math.cos(angle) * inner,
+      y1: 60 + Math.sin(angle) * inner,
+      x2: 60 + Math.cos(angle) * outer,
+      y2: 60 + Math.sin(angle) * outer,
+    };
+  });
+}
+
+function gaugePointer(pct: number): {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+} {
+  const angle = (pct * 360 - 90) * (Math.PI / 180);
+  return {
+    x1: 60 + Math.cos(angle) * 38,
+    y1: 60 + Math.sin(angle) * 38,
+    x2: 60 + Math.cos(angle) * 54,
+    y2: 60 + Math.sin(angle) * 54,
+  };
+}
+
 function linePath(points: ChartPoint[]): string {
   return points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
@@ -488,8 +600,4 @@ function normalizeStepStatus(status: StepItem['status'] | StepItem['state']): St
     return status;
   }
   return 'pending';
-}
-
-function cycleState(index: number): State {
-  return (['info', 'stable', 'caution', 'critical'] as const)[index % 4];
 }

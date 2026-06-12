@@ -26,6 +26,13 @@
   --state-caution-bg: rgba(245, 158, 11, 0.14);
   --state-critical-bg: rgba(239, 68, 68, 0.14);
 
+  /* neutral series axis: distinguishes data series without state semantics */
+  --series-0: #22d3ee;
+  --series-1: #3b82f6;
+  --series-2: #67e8f9;
+  --series-3: #818cf8;
+  --series-4: #2dd4bf;
+
   /* typography */
   --font-ui:
     -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic',

@@ -15,6 +15,9 @@ export interface EnvelopeSayFinish {
 
 type ParserState =
   | 'before-open'
+  | 'fence'
+  | 'fence-language'
+  | 'fence-after-language'
   | 'await-key'
   | 'key'
   | 'key-escape'
@@ -38,6 +41,7 @@ export class EnvelopeSayStreamParser {
   private unicode = '';
   private skipDepth = 0;
   private textOffset = 0;
+  private fenceTicks = 0;
 
   push(chunk: string): EnvelopeSayChunk {
     if (!chunk) {
@@ -58,9 +62,10 @@ export class EnvelopeSayStreamParser {
 
     let emitted = '';
     for (const char of chunk) {
-      if (this.mode === 'pending' && this.state === 'before-open') {
-        if (/\s/.test(char)) continue;
-        if (char !== '{') {
+      if (this.mode === 'pending') {
+        const accepted = this.consumePendingChar(char);
+        if (accepted === 'wait') continue;
+        if (accepted === 'text') {
           this.mode = 'text';
           this.textOffset = this.raw.length;
           return { mode: 'text', text: this.raw, sayComplete: false };
@@ -153,6 +158,54 @@ export class EnvelopeSayStreamParser {
         return '';
       default:
         return '';
+    }
+  }
+
+  private consumePendingChar(char: string): 'wait' | 'envelope' | 'text' {
+    switch (this.state) {
+      case 'before-open':
+        if (/\s/.test(char)) return 'wait';
+        if (char === '`') {
+          this.fenceTicks = 1;
+          this.state = 'fence';
+          return 'wait';
+        }
+        return char === '{' ? 'envelope' : 'text';
+      case 'fence':
+        if (char === '`') {
+          this.fenceTicks += 1;
+          return 'wait';
+        }
+        if (this.fenceTicks >= 3) {
+          if (char === '\n' || char === '\r') {
+            this.state = 'before-open';
+            return 'wait';
+          }
+          if (/[A-Za-z]/.test(char)) {
+            this.state = 'fence-language';
+            return 'wait';
+          }
+        }
+        return 'text';
+      case 'fence-language':
+        if (/[A-Za-z0-9_-]/.test(char)) return 'wait';
+        if (char === '\n' || char === '\r') {
+          this.state = 'before-open';
+          return 'wait';
+        }
+        if (/\s/.test(char)) {
+          this.state = 'fence-after-language';
+          return 'wait';
+        }
+        return 'text';
+      case 'fence-after-language':
+        if (char === '\n' || char === '\r') {
+          this.state = 'before-open';
+          return 'wait';
+        }
+        return /\s/.test(char) ? 'wait' : 'text';
+      default:
+        return 'text';
     }
   }
 

@@ -64,6 +64,8 @@ export const HUD_SYSTEM_PROMPT = [
   'Before jsx, fill design = { data_kind, primitives, layout, why }. This is your visible design decision record.',
   `If the HUD should keep updating without another LLM call, set live = { source, params, intervalMs }. Allowed live sources: ${LIVE_HUD_SOURCES.join(', ')}. Otherwise set live:null.`,
   'Live source guide: disk -> path capacity data for Gauge/PieChart; project -> git status; build_sim -> simulated build Steps/ProgressBar; proc_watch -> manual PID polling.',
+  'When live is non-null, JSX may only reference keys that the selected source will push. Exact schemas: disk -> {path,totalBytes,usedBytes,freeBytes,usedPct,min,max,state,summaryItems,slices,_source}; project -> {root,branch,changedFiles,stagedFiles,unstagedFiles,untrackedFiles,files,summaryItems,_source}; build_sim -> {startedAt,elapsedSec,progress,state,steps,summaryItems,_source}; proc_watch -> {pid,running,state,summaryItems,_source}.',
+  'For live disk HUDs, use value={data.usedPct}, min={data.min}, max={data.max}, slices={data.slices}, and items={data.summaryItems}; do not invent aliases such as used_percent or free_pct.',
   'design.primitives must contain component names only, such as "Chart" or "ProgressBar"; never include props like "Chart kind=bar" in primitives.',
   'Archetype map: progress/pipeline -> Steps + ProgressBar; utilization/capacity -> Gauge + Stat; breakdown/composition -> PieChart + Stat; timeseries/trend -> Chart kind="line" or kind="area"; comparison/ranking -> Chart kind="bar"; signal/waveform -> Waveform; status/overview -> StatusPanel + Badge + KeyValue.',
   'Graphic density: choose 2-3 complementary primitives, lead with a graphic primitive, and use KeyValue only as supporting detail. Avoid repeating the same label-table layout for different tasks.',
@@ -83,71 +85,6 @@ export const HUD_SYSTEM_PROMPT = [
   'When seed data is already sufficient, pass it through unchanged and choose primitives from the archetype map.',
   'If a HUD is not useful or data collection fails, return jsx:null and explain briefly in say.',
 ].join('\n');
-
-export function shouldGenerateHud(input: string): boolean {
-  const normalized = input.toLocaleLowerCase();
-  const keywords = [
-    '빌드',
-    'build',
-    '상태',
-    '보여',
-    '확인',
-    '봐',
-    '얼마나',
-    '왜',
-    'why',
-    'hud',
-    '화면',
-    '프로젝트',
-    'project',
-    'repo',
-    'repository',
-    '저장소',
-    '의존성',
-    '취약점',
-    '디스크',
-    'disk',
-    '?',
-  ];
-  return keywords.some((keyword) => normalized.includes(keyword));
-}
-
-export async function generateHudJsx(
-  task: string,
-  seedData: HudData = {},
-  options: GenerateHudOptions = {},
-): Promise<HudGenerationResult> {
-  const raw = await completeHud(
-    [
-      `Task context: ${task}`,
-      `Project root for terminal/file tools: ${__JARVIS_PROJECT_ROOT__}`,
-      describeHudDataShape(seedData),
-      `Seed data JSON: ${stringifyForPrompt(seedData)}`,
-      'Return one JSON envelope only.',
-    ].join('\n\n'),
-    options,
-  );
-
-  try {
-    const envelope = extractHudEnvelope(raw);
-    assertValidHudEnvelope(envelope);
-    return { ...envelope, repairCount: 0 };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return repairHudJsx(
-      {
-        say: '',
-        design: null,
-        live: null,
-        jsx: raw,
-        data: seedData,
-        repairCount: 0,
-      },
-      message,
-      options,
-    );
-  }
-}
 
 export async function repairHudJsx(
   previous: HudGenerationResult,
@@ -279,7 +216,7 @@ export function extractHudJsx(raw: string): string {
 }
 
 export function assertValidHudEnvelope(envelope: HudEnvelope): void {
-  capData(envelope.data);
+  assertDataWithinCap(envelope.data);
   if (envelope.jsx !== null) {
     assertValidHudDesign(envelope.design, envelope.jsx);
     assertValidHudJsx(envelope.jsx);
@@ -295,9 +232,17 @@ export function assertValidHudJsx(jsx: string): void {
     throw new Error('Top-level HUD JSX must end with </Panel>.');
   }
 
+  if (/`/.test(trimmed)) {
+    throw new Error('HUD JSX cannot use template literals.');
+  }
+
+  // Mask attribute values only: string literals inside {expressions} stay
+  // visible so quoted escapes like {''["constructor"]} cannot hide from the
+  // deny-list, while labels like title="git fetch" do not false-positive.
+  const codeToInspect = maskAttributeValues(trimmed);
   const forbiddenPattern =
-    /\b(import|export|window|document|fetch|localStorage|sessionStorage|globalThis|eval|Function)\b/;
-  if (forbiddenPattern.test(trimmed)) {
+    /\b(import|export|window|document|fetch|localStorage|sessionStorage|globalThis|eval|Function|constructor|prototype|__proto__|function|new)\b|=>/;
+  if (forbiddenPattern.test(codeToInspect)) {
     throw new Error('HUD JSX contains a forbidden global or statement.');
   }
   if (/\b(style|className|dangerouslySetInnerHTML)\s*=/.test(trimmed)) {
@@ -312,7 +257,9 @@ export function assertValidHudJsx(jsx: string): void {
     throw new Error('HUD JSX cannot use arbitrary HTML elements.');
   }
   if (
-    /\b(?:value|steps|samples|data|items|slices)\s*=\s*{\s*\d/.test(trimmed)
+    /\b(?:value|steps|samples|data|items|slices)\s*=\s*{\s*[+-]?(?:\d|\.\d)/.test(
+      trimmed,
+    )
   ) {
     throw new Error(
       'HUD JSX must reference deterministic data instead of hardcoded numbers.',
@@ -331,6 +278,19 @@ export function assertValidHudJsx(jsx: string): void {
     throw new Error(
       'HUD state props must be stable, info, caution, or critical.',
     );
+  }
+  if (/\\/.test(codeToInspect)) {
+    throw new Error('HUD JSX cannot use escape sequences outside strings.');
+  }
+  if (/\[(?!\d+\])/.test(codeToInspect)) {
+    throw new Error(
+      'HUD JSX may only use numeric indexing like data.slices[0].',
+    );
+  }
+  // `){` is the start of a function body: object method shorthand and
+  // getters create functions without the banned `function`/`=>` tokens.
+  if (/\)\s*\{/.test(codeToInspect)) {
+    throw new Error('HUD JSX cannot define function bodies.');
   }
 
   const components = new Set(inferComponents(trimmed));
@@ -446,6 +406,23 @@ function capData(data: HudData): HudData {
     _originalBytes: encoded.length,
     preview: encoded.slice(0, MAX_DATA_BYTES),
   };
+}
+
+function assertDataWithinCap(data: HudData): void {
+  const encoded = JSON.stringify(data);
+  if (encoded.length > MAX_DATA_BYTES) {
+    throw new Error(
+      `HUD data exceeds ${MAX_DATA_BYTES} bytes; summarize tool output before rendering.`,
+    );
+  }
+}
+
+function maskAttributeValues(source: string): string {
+  return source.replace(
+    /(=\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g,
+    (_match, prefix: string, literal: string) =>
+      prefix + literal[0] + ' '.repeat(literal.length - 2) + literal[0],
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

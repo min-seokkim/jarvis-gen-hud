@@ -24,21 +24,79 @@
   --hud-state-bg: var(--state-critical-bg);
 }
 
+.hud-series-0 {
+  --hud-state-color: var(--series-0);
+}
+
+.hud-series-1 {
+  --hud-state-color: var(--series-1);
+}
+
+.hud-series-2 {
+  --hud-state-color: var(--series-2);
+}
+
+.hud-series-3 {
+  --hud-state-color: var(--series-3);
+}
+
+.hud-series-4 {
+  --hud-state-color: var(--series-4);
+}
+
 .hud-panel {
   min-width: 0;
-  background: linear-gradient(180deg, var(--surface), var(--bg));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--hud-state-color) 8%, transparent) 0 1px, transparent 1px 100%),
+    linear-gradient(180deg, color-mix(in srgb, var(--hud-state-color) 5%, transparent) 0 1px, transparent 1px 100%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, var(--hud-state-color)), var(--bg));
+  background-size:
+    36px 36px,
+    36px 36px,
+    auto;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--glow);
   color: var(--text);
   overflow: hidden;
+  position: relative;
   transition:
     border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
 }
 
+.hud-panel::before,
+.hud-panel::after {
+  border-color: var(--hud-state-color);
+  content: '';
+  opacity: 0.45;
+  pointer-events: none;
+  position: absolute;
+}
+
+.hud-panel::before {
+  block-size: 20px;
+  border-block-start: 2px solid;
+  border-inline-start: 2px solid;
+  inline-size: 20px;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+}
+
+.hud-panel::after {
+  block-size: 20px;
+  border-block-end: 2px solid;
+  border-inline-end: 2px solid;
+  inline-size: 20px;
+  inset-block-end: 0;
+  inset-inline-end: 0;
+}
+
 .hud-panel:hover {
   border-color: var(--hud-state-color);
+  box-shadow:
+    var(--glow),
+    inset 0 0 24px color-mix(in srgb, var(--hud-state-color) 12%, transparent);
 }
 
 .hud-panel--span-2 {
@@ -117,6 +175,7 @@
 .hud-progress {
   display: grid;
   gap: var(--sp-2);
+  position: relative;
 }
 
 .hud-progress-head,
@@ -134,22 +193,40 @@
   block-size: var(--sp-2);
   inline-size: 100%;
   min-inline-size: 0;
+  position: relative;
 }
 
 .hud-progress progress::-webkit-progress-bar {
   background: var(--surface-2);
   border-radius: var(--r-pill);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .hud-progress progress::-webkit-progress-value {
-  background: var(--hud-state-color);
+  background: linear-gradient(90deg, var(--hud-state-color), color-mix(in srgb, var(--hud-state-color) 64%, white));
   border-radius: var(--r-pill);
+  box-shadow: 0 0 14px var(--hud-state-color);
   transition: inline-size var(--dur) var(--ease);
 }
 
 .hud-progress progress::-moz-progress-bar {
-  background: var(--hud-state-color);
+  background: linear-gradient(90deg, var(--hud-state-color), color-mix(in srgb, var(--hud-state-color) 64%, white));
   border-radius: var(--r-pill);
+}
+
+.hud-progress-scale {
+  block-size: 8px;
+  inline-size: 100%;
+  position: relative;
+}
+
+.hud-progress-scale span {
+  background: var(--hud-state-color);
+  block-size: 6px;
+  inline-size: 1px;
+  opacity: 0.52;
+  position: absolute;
+  top: 0;
 }
 
 .hud-gauge {
@@ -162,6 +239,7 @@
 
 .hud-gauge svg {
   inline-size: min(100%, 156px);
+  overflow: visible;
 }
 
 .hud-gauge-track,
@@ -174,12 +252,37 @@
 }
 
 .hud-gauge-track {
-  stroke: var(--surface-2);
+  stroke: color-mix(in srgb, var(--surface-2) 78%, var(--hud-state-color));
 }
 
 .hud-gauge-fill {
   stroke: currentColor;
+  filter: drop-shadow(0 0 5px currentColor);
   transition: stroke-dashoffset var(--dur-slow) var(--ease);
+}
+
+.hud-gauge-ticks line {
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1;
+  opacity: 0.42;
+}
+
+.hud-gauge-ticks .is-major {
+  stroke-width: 1.8;
+  opacity: 0.8;
+}
+
+.hud-gauge-pointer {
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 5px currentColor);
+  transition:
+    x1 var(--dur-slow) var(--ease),
+    y1 var(--dur-slow) var(--ease),
+    x2 var(--dur-slow) var(--ease),
+    y2 var(--dur-slow) var(--ease);
 }
 
 .hud-gauge-readout {
@@ -219,6 +322,14 @@
   color: var(--hud-state-color);
   inline-size: min(100%, 172px);
   justify-self: center;
+  overflow: visible;
+}
+
+.hud-pie-radar circle,
+.hud-pie-radar path {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.8;
 }
 
 .hud-pie-track,
@@ -236,11 +347,12 @@
 
 .hud-pie-segment {
   stroke: var(--hud-state-color);
+  filter: drop-shadow(0 0 4px var(--hud-state-color));
 }
 
 .hud-pie-core {
-  fill: var(--bg);
-  stroke: var(--line);
+  fill: color-mix(in srgb, var(--bg) 82%, var(--hud-state-color));
+  stroke: var(--hud-state-color);
   stroke-width: 1;
 }
 
@@ -329,7 +441,7 @@
 
 .hud-steps {
   display: grid;
-  gap: var(--sp-2);
+  gap: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -342,6 +454,22 @@
   font-size: var(--fs-sm);
   gap: var(--sp-2);
   grid-template-columns: auto 1fr;
+  min-block-size: 30px;
+  position: relative;
+}
+
+.hud-steps li::before {
+  background: var(--line);
+  block-size: 100%;
+  content: '';
+  inline-size: 1px;
+  inset-block-start: 50%;
+  inset-inline-start: 4px;
+  position: absolute;
+}
+
+.hud-steps li:last-child::before {
+  display: none;
 }
 
 .hud-step-dot {
@@ -350,6 +478,7 @@
   border-radius: var(--r-pill);
   box-shadow: 0 0 0 3px var(--surface-2);
   inline-size: 9px;
+  z-index: 1;
 }
 
 .hud-steps .is-done {
@@ -366,15 +495,24 @@
 
 .hud-steps .is-done .hud-step-dot {
   background: var(--state-stable);
+  box-shadow:
+    0 0 0 3px var(--surface-2),
+    0 0 10px var(--state-stable);
 }
 
 .hud-steps .is-active .hud-step-dot {
   animation: hudPulse var(--dur-slow) var(--ease) infinite;
   background: var(--state-info);
+  box-shadow:
+    0 0 0 3px var(--surface-2),
+    0 0 12px var(--state-info);
 }
 
 .hud-steps .is-failed .hud-step-dot {
   background: var(--state-critical);
+  box-shadow:
+    0 0 0 3px var(--surface-2),
+    0 0 12px var(--state-critical);
 }
 
 .hud-chart,
@@ -394,19 +532,33 @@
 }
 
 .hud-chart-grid,
-.hud-waveform-mid {
+.hud-waveform-mid,
+.hud-waveform-band {
   fill: none;
   stroke: var(--line);
   stroke-width: 1;
+}
+
+.hud-chart-axis {
+  fill: none;
+  stroke: color-mix(in srgb, var(--hud-state-color) 42%, var(--line));
+  stroke-width: 1.2;
 }
 
 .hud-chart-line,
 .hud-waveform-line {
   fill: none;
   stroke: currentColor;
+  filter: drop-shadow(0 0 4px currentColor);
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 3;
+}
+
+.hud-chart-points circle {
+  fill: var(--bg);
+  stroke: currentColor;
+  stroke-width: 1.5;
 }
 
 .hud-chart-area {
@@ -416,6 +568,12 @@
 
 .hud-chart-bar {
   fill: currentColor;
+}
+
+.hud-chart-xlabels text {
+  fill: var(--text-mid);
+  font-family: var(--font-mono);
+  font-size: 6px;
 }
 
 .hud-alert {
