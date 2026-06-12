@@ -7,6 +7,7 @@ import { StatusBar } from './components/StatusBar';
 import { Gallery } from './Gallery';
 import {
   assertValidHudEnvelope,
+  assertValidHudJsx,
   createHudFallback,
   extractHudEnvelope,
   HUD_SYSTEM_PROMPT,
@@ -14,6 +15,7 @@ import {
   type HudGenerationResult,
 } from './lib/hudGenerator';
 import { EnvelopeSayStreamParser } from './lib/hudEnvelopeStream';
+import { shouldRotateConversation } from './lib/conversationRotation';
 import {
   createConversationName,
   streamResponse,
@@ -33,9 +35,11 @@ type MobileTab = 'chat' | 'hud';
 const CONVERSATION_STORAGE_KEY = 'jarvis.conversation';
 const TRANSCRIPT_STORAGE_KEY = 'jarvis.transcript';
 const HUD_STORAGE_KEY = 'jarvis.hud';
+const ROTATION_BASE_STORAGE_KEY = 'jarvis.rotationBase';
 const MAX_CONVERSATION_TURNS = readTurnLimit(
   import.meta.env.VITE_JARVIS_MAX_CONVERSATION_TURNS,
 );
+const LIVE_PERSIST_INTERVAL_MS = 2_000;
 
 export default function App() {
   if (window.location.pathname === '/gallery') {
@@ -48,6 +52,7 @@ export default function App() {
 function ChatApp() {
   const [conversation, setConversation] = useState(loadConversation);
   const [messages, setMessages] = useState<DisplayMessage[]>(loadTranscript);
+  const [rotationBase, setRotationBase] = useState(loadRotationBase);
   const [status, setStatus] = useState<JarvisStatus>('idle');
   const [statusDetail, setStatusDetail] = useState<string | undefined>();
   const [streaming, setStreaming] = useState(false);
@@ -59,6 +64,7 @@ function ChatApp() {
   const activeLiveSubRef = useRef<string | null>(null);
   const hudRef = useRef<HudRenderState>(hud);
   const lastRenderErrorRef = useRef<string | null>(null);
+  const lastLivePersistRef = useRef(0);
 
   useEffect(() => {
     hudRef.current = hud;
@@ -72,14 +78,22 @@ function ChatApp() {
     writeStorage(TRANSCRIPT_STORAGE_KEY, JSON.stringify(messages));
   }, [messages]);
 
+  useEffect(() => {
+    writeStorage(ROTATION_BASE_STORAGE_KEY, String(rotationBase));
+  }, [rotationBase]);
+
   async function handleSend(text: string) {
     const userMsg: DisplayMessage = { role: 'user', content: text };
-    const activeConversation = shouldRotateConversation(messages)
-      ? createConversationName()
-      : conversation;
+    const rotate = shouldRotateConversation(
+      messages,
+      rotationBase,
+      MAX_CONVERSATION_TURNS,
+    );
+    const activeConversation = rotate ? createConversationName() : conversation;
 
-    if (activeConversation !== conversation) {
+    if (rotate) {
       setConversation(activeConversation);
+      setRotationBase(messages.length);
     }
 
     setMessages((prev) => [
@@ -168,6 +182,7 @@ function ChatApp() {
     // Topic shift only: long-term memory stays scoped by X-Hermes-Session-Key.
     setConversation(createConversationName());
     setMessages([]);
+    setRotationBase(0);
     setHud({ phase: 'idle', message: 'New topic started.' });
     clearHudState();
     setStatus('idle');
@@ -325,7 +340,13 @@ function ChatApp() {
         data: message.data,
         liveStatus: 'connected' as const,
       };
-      persistHudState(next);
+      // Live pushes arrive at >=1Hz; serializing up to 50KB every tick is
+      // wasteful, and the source re-pushes on resubscribe anyway.
+      const now = Date.now();
+      if (now - lastLivePersistRef.current >= LIVE_PERSIST_INTERVAL_MS) {
+        lastLivePersistRef.current = now;
+        persistHudState(next);
+      }
       return next;
     });
   }, []);
@@ -512,16 +533,13 @@ function markDataCaution(
   };
 }
 
-function shouldRotateConversation(messages: DisplayMessage[]): boolean {
-  if (MAX_CONVERSATION_TURNS <= 0) return false;
-  return (
-    messages.filter((message) => message.role === 'user').length >=
-    MAX_CONVERSATION_TURNS
-  );
-}
-
 function loadConversation(): string {
   return readStorage(CONVERSATION_STORAGE_KEY) ?? createConversationName();
+}
+
+function loadRotationBase(): number {
+  const parsed = Number(readStorage(ROTATION_BASE_STORAGE_KEY));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function loadTranscript(): DisplayMessage[] {
@@ -542,6 +560,8 @@ function loadHudState(): HudRenderState {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!isPersistedHudState(parsed)) return { phase: 'idle' };
+    // Stored JSX may predate current validator rules or be corrupted.
+    assertValidHudJsx(parsed.jsx);
     return {
       phase: 'rendered',
       jsx: parsed.jsx,
@@ -630,7 +650,7 @@ function formatToolName(name: string): string {
   const normalized = name.trim();
   if (!normalized) return 'tool';
   if (/terminal|shell|cmd|powershell/i.test(normalized)) return 'terminal';
-  if (/code/i.test(normalized)) return 'code_execution';
+  if (/(?:^|[^a-z])code/i.test(normalized)) return 'code_execution';
   if (/file|read|write/i.test(normalized)) return 'file';
   return normalized;
 }

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Generated HUD code runs in this document. connect/img/etc default to
+         'none' so even a validator bypass cannot exfiltrate or load anything;
+         'unsafe-eval' is required by react-live's runtime compilation. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HUD frame</title>
+    <!-- CSS is inlined in hud-frame.js and injected as a <style> element,
+         which the style-src 'unsafe-inline' directive above permits. -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="/hud-frame.js"></script>
+  </body>
+</html>

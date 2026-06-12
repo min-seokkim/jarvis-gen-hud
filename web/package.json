@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "predev": "npm run build:frame",
     "build": "tsc -b && vite build",
+    "prebuild": "npm run build:frame",
+    "build:frame": "vite build --config vite.hudframe.config.ts",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",

@@ -24,3 +24,7 @@ test-results
 *.njsproj
 *.sln
 *.sw?
+
+# built sandboxed HUD frame bundle (npm run build:frame)
+public/hud-frame.js
+public/hud-frame.css

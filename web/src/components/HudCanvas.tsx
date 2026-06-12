@@ -1,22 +1,12 @@
-import { useContext, useEffect, useMemo, type ReactNode } from 'react';
-import { LiveContext, LiveError, LivePreview, LiveProvider } from 'react-live';
-import {
-  Alert,
-  Badge,
-  Chart,
-  Gauge,
-  KeyValue,
-  Panel,
-  PieChart,
-  ProgressBar,
-  Stat,
-  StatusPanel,
-  Steps,
-  Waveform,
-} from '../hud';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Panel } from '../hud';
 import type { HudData } from '../lib/hudData';
 import type { HudDesign } from '../lib/hudGenerator';
 import type { LiveHudSpec } from '../lib/liveHud';
+import {
+  isHudFrameStatusMessage,
+  type HudFrameRenderMessage,
+} from '../lib/hudFrameProtocol';
 
 export type HudPhase = 'idle' | 'generating' | 'rendered' | 'error';
 
@@ -36,26 +26,13 @@ interface Props {
   onRenderError: (message: string) => void;
 }
 
-export function HudCanvas({ hud, onRenderError }: Props) {
-  const scope = useMemo(
-    () => ({
-      Alert,
-      Badge,
-      Chart,
-      Gauge,
-      KeyValue,
-      Panel,
-      PieChart,
-      ProgressBar,
-      Stat,
-      StatusPanel,
-      Steps,
-      Waveform,
-      data: hud.data,
-    }),
-    [hud.data],
-  );
+const HUD_FRAME_URL = '/hud-frame.html';
+const FRAME_BOOT_TIMEOUT_MS = 8_000;
+const FRAME_RENDER_TIMEOUT_MS = 5_000;
+const MIN_FRAME_HEIGHT = 160;
+const MAX_FRAME_HEIGHT = 2_400;
 
+export function HudCanvas({ hud, onRenderError }: Props) {
   return (
     <section className="panel" aria-label="HUD 캔버스">
       <div className="panel-title">HUD 캔버스</div>
@@ -65,44 +42,152 @@ export function HudCanvas({ hud, onRenderError }: Props) {
           <HudSkeleton message={hud.message ?? 'HUD 생성 중'} />
         )}
         {hud.phase === 'error' && (
-          <div className="hud-live-fallback" data-testid="hud-fallback">
-            <Panel title="HUD fallback" state="critical">
-              <Alert
-                severity="critical"
-                title="HUD render failed"
-                message={hud.message ?? 'Unable to render generated HUD.'}
-              />
-            </Panel>
-          </div>
+          <HudFallback
+            message={hud.message ?? 'Unable to render generated HUD.'}
+          />
         )}
         {hud.phase === 'rendered' && hud.jsx && hud.data && (
-          <LiveProvider code={hud.jsx} scope={scope} language="tsx">
-            <RenderErrorBridge onError={onRenderError} />
-            <LivePreview Component={HudPreviewFrame} />
-            <LiveError className="hud-live-error" data-testid="hud-live-error" />
-          </LiveProvider>
+          <HudFrame
+            jsx={hud.jsx}
+            data={hud.data}
+            onRenderError={onRenderError}
+          />
         )}
       </div>
     </section>
   );
 }
 
-function HudPreviewFrame({ children }: { children?: ReactNode }) {
+/**
+ * Hosts the generated HUD in an opaque-origin sandboxed iframe
+ * (public/hud-frame.html). Generated code never executes in this document:
+ * the frame has no same-origin access, and its CSP blocks all network I/O.
+ * Render status flows back over postMessage; a watchdog converts a silent
+ * frame into the normal repair path.
+ */
+function HudFrame({
+  jsx,
+  data,
+  onRenderError,
+}: {
+  jsx: string;
+  data: HudData;
+  onRenderError: (message: string) => void;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const readyRef = useRef(false);
+  const watchdogRef = useRef<number | null>(null);
+  const payloadRef = useRef<HudFrameRenderMessage>({
+    type: 'hud:render',
+    jsx,
+    data,
+  });
+  const onRenderErrorRef = useRef(onRenderError);
+  const [height, setHeight] = useState(MIN_FRAME_HEIGHT);
+  const [bootFailed, setBootFailed] = useState(false);
+
+  // Keep these refs in sync before the postRender effect below runs;
+  // effects run in declaration order.
+  useEffect(() => {
+    payloadRef.current = { type: 'hud:render', jsx, data };
+  }, [jsx, data]);
+
+  useEffect(() => {
+    onRenderErrorRef.current = onRenderError;
+  }, [onRenderError]);
+
+  const clearWatchdog = useCallback(() => {
+    if (watchdogRef.current !== null) {
+      window.clearTimeout(watchdogRef.current);
+      watchdogRef.current = null;
+    }
+  }, []);
+
+  const postRender = useCallback(() => {
+    // Opaque-origin frames can only be addressed with targetOrigin '*';
+    // the payload contains no secrets (generated JSX + tool data).
+    iframeRef.current?.contentWindow?.postMessage(payloadRef.current, '*');
+    clearWatchdog();
+    watchdogRef.current = window.setTimeout(() => {
+      watchdogRef.current = null;
+      onRenderErrorRef.current('HUD frame render timed out.');
+    }, FRAME_RENDER_TIMEOUT_MS);
+  }, [clearWatchdog]);
+
+  useEffect(() => {
+    const bootTimer = window.setTimeout(() => {
+      if (!readyRef.current) setBootFailed(true);
+    }, FRAME_BOOT_TIMEOUT_MS);
+    return () => window.clearTimeout(bootTimer);
+  }, []);
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const message: unknown = event.data;
+      if (!isHudFrameStatusMessage(message)) return;
+
+      if (message.type === 'hud:ready') {
+        readyRef.current = true;
+        postRender();
+      } else if (message.type === 'hud:rendered') {
+        clearWatchdog();
+      } else if (message.type === 'hud:error') {
+        clearWatchdog();
+        onRenderErrorRef.current(message.message);
+      } else {
+        setHeight(
+          Math.min(
+            MAX_FRAME_HEIGHT,
+            Math.max(MIN_FRAME_HEIGHT, Math.ceil(message.height)),
+          ),
+        );
+      }
+    }
+
+    window.addEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      clearWatchdog();
+    };
+  }, [postRender, clearWatchdog]);
+
+  useEffect(() => {
+    if (readyRef.current) postRender();
+  }, [jsx, data, postRender]);
+
+  if (bootFailed) {
+    return (
+      <HudFallback message="HUD frame failed to load. Rebuild it with `npm run build:frame` and reload." />
+    );
+  }
+
   return (
-    <div className="hud-live-preview" data-testid="hud-live-preview">
-      {children}
-    </div>
+    <iframe
+      ref={iframeRef}
+      className="hud-live-frame"
+      data-testid="hud-live-frame"
+      title="HUD frame"
+      src={HUD_FRAME_URL}
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
+      style={{ height: `${height}px` }}
+    />
   );
 }
 
-function RenderErrorBridge({ onError }: { onError: (message: string) => void }) {
-  const live = useContext(LiveContext);
-
-  useEffect(() => {
-    if (live.error) onError(live.error);
-  }, [live.error, onError]);
-
-  return null;
+function HudFallback({ message }: { message: string }) {
+  return (
+    <div className="hud-live-fallback" data-testid="hud-fallback">
+      <Panel title="HUD fallback" state="critical">
+        <Alert
+          severity="critical"
+          title="HUD render failed"
+          message={message}
+        />
+      </Panel>
+    </div>
+  );
 }
 
 function HudEmpty() {

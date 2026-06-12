@@ -269,6 +269,13 @@ body {
   animation: hudFadeIn var(--dur) var(--ease);
 }
 
+.hud-live-frame {
+  animation: hudFadeIn var(--dur) var(--ease);
+  border: 0;
+  display: block;
+  inline-size: 100%;
+}
+
 .hud-live-error {
   background: var(--state-critical-bg);
   border: 1px solid var(--state-critical);

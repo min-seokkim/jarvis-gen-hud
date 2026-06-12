@@ -1,0 +1,23 @@
+/* Base styles for the sandboxed HUD frame document. The parent canvas
+   provides the backdrop and padding; the frame body stays transparent so
+   the HUD panels blend into the app. */
+
+html,
+body {
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  color: var(--text);
+  color-scheme: dark;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  line-height: var(--lh);
+}
+
+.hud-frame-preview {
+  display: grid;
+  gap: var(--sp-3);
+}

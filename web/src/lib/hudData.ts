@@ -1,32 +1,4 @@
-import type { StepStatus } from '../hud';
-
 export type HudData = Record<string, unknown>;
-
-export interface BuildStatusData {
-  progress: number;
-  steps: { name: string; status: StepStatus }[];
-}
-
-export function getBuildStatus(): BuildStatusData {
-  return {
-    progress: 74,
-    steps: [
-      { name: 'Install deps', status: 'done' },
-      { name: 'Typecheck', status: 'done' },
-      { name: 'Build bundle', status: 'active' },
-      { name: 'Deploy gate', status: 'pending' },
-      { name: 'Smoke test', status: 'failed' },
-    ],
-  };
-}
-
-export async function getHudData(task = ''): Promise<HudData> {
-  if (isBuildStatusTask(task)) {
-    return { build: getBuildStatus() };
-  }
-
-  return {};
-}
 
 export function describeHudDataShape(data: HudData): string {
   const lines = ['provided deterministic seed data shape:'];
@@ -36,11 +8,6 @@ export function describeHudDataShape(data: HudData): string {
     'Seed data is optional. For new tasks, use Hermes tools and return collected results in the envelope data object.',
   );
   return lines.join('\n');
-}
-
-function isBuildStatusTask(input: string): boolean {
-  const normalized = input.toLocaleLowerCase();
-  return ['빌드', 'build'].some((keyword) => normalized.includes(keyword));
 }
 
 function describeValue(value: unknown, depth: number, key = 'data'): string {
