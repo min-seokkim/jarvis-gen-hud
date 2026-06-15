@@ -1,0 +1,24 @@
+{
+  "id": "gpu",
+  "kind": "command",
+  "description": "NVIDIA GPU temperature/utilization/memory via nvidia-smi",
+  "argv": [
+    "nvidia-smi",
+    "--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total",
+    "--format=csv,noheader,nounits"
+  ],
+  "parse": {
+    "type": "csv",
+    "columns": ["tempC", "utilPct", "memUsedMB", "memTotalMB"],
+    "numeric": true
+  },
+  "constants": { "min": 0, "max": 100 },
+  "outputSchema": [
+    "tempC", "utilPct", "memUsedMB", "memTotalMB",
+    "min", "max", "state", "summaryItems", "_source"
+  ],
+  "state": { "field": "tempC", "caution": 75, "critical": 85, "direction": "above" },
+  "defaultIntervalMs": 2000,
+  "timeoutMs": 2000,
+  "maxOutputBytes": 4096
+}

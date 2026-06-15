@@ -195,3 +195,13 @@ def test_load_dynamic_skips_unknown_kind(tmp_path: Path):
 def test_descriptor_from_manifest_validates():
     assert descriptor_from_manifest({"kind": "command", "argv": ["x"]}) is None  # no id
     assert descriptor_from_manifest("not a dict") is None
+
+
+def test_gpu_manifest_is_discovered():
+    # The shipped dynamic/gpu.json is discovered as a command source. Discovery
+    # does not execute nvidia-smi, so this passes on machines without a GPU.
+    described = {item["id"]: item for item in describe_sources()}
+    assert "gpu" in described
+    assert described["gpu"]["kind"] == "command"
+    assert "tempC" in described["gpu"]["outputSchema"]
+    assert get_source("gpu") is not None
