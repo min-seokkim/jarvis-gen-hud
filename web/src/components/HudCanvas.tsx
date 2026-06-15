@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Panel } from '../hud';
+import { Alert, Panel, Steps, StatusPanel } from '../hud';
 import type { HudData } from '../lib/hudData';
 import type { HudDesign } from '../lib/hudGenerator';
 import type { LiveHudSpec } from '../lib/liveHud';
+import type { ToolActivity } from '../lib/toolActivity';
 import {
   isHudFrameStatusMessage,
   type HudFrameRenderMessage,
@@ -19,6 +20,8 @@ export interface HudRenderState {
   data?: HudData;
   message?: string;
   repairCount?: number;
+  /** 도구 실행 중 라이브 진행 타임라인(generating 페이즈). */
+  activity?: ToolActivity[];
 }
 
 interface Props {
@@ -38,9 +41,12 @@ export function HudCanvas({ hud, onRenderError }: Props) {
       <div className="panel-title">HUD 캔버스</div>
       <div className="hud-live-canvas" data-testid="hud-canvas">
         {hud.phase === 'idle' && <HudEmpty />}
-        {hud.phase === 'generating' && (
-          <HudSkeleton message={hud.message ?? 'HUD 생성 중'} />
-        )}
+        {hud.phase === 'generating' &&
+          (hud.activity && hud.activity.length > 0 ? (
+            <HudProgress activity={hud.activity} />
+          ) : (
+            <HudSkeleton message={hud.message ?? 'HUD 생성 중'} />
+          ))}
         {hud.phase === 'error' && (
           <HudFallback
             message={hud.message ?? 'Unable to render generated HUD.'}
@@ -210,6 +216,40 @@ function HudSkeleton({ message }: { message: string }) {
         <span />
       </div>
       <p>{message}</p>
+    </div>
+  );
+}
+
+/**
+ * 도구 실행 라이브 진행 표시. 본 generative HUD가 완성되기 전, envelope 턴이
+ * 도구를 도는 동안 실행 타임라인 + 정제 로그를 보여준다. 손제작 컴포넌트라
+ * iframe 샌드박스가 불필요하며(HudFallback처럼 직접 렌더), 디자인 시스템
+ * 프리미티브만 쓴다. detail은 도구 출력 원문(정제)뿐 — LLM 생성 아님.
+ *
+ * Steps 프리미티브는 description을 렌더하지 않으므로, 정제된 detail은 스텝
+ * 이름에 인라인해 실제로 보이게 한다(원문 그대로, 트렁케이트만).
+ */
+function HudProgress({ activity }: { activity: ToolActivity[] }) {
+  const total = activity.length;
+  const done = activity.filter((a) => a.status !== 'active').length;
+  const anyActive = activity.some((a) => a.status === 'active');
+
+  return (
+    <div className="hud-live-preview" data-testid="hud-progress" role="status">
+      <Panel title="작업 진행 중" state="info">
+        <StatusPanel
+          label="도구"
+          value={`${done}/${total}`}
+          state="info"
+          hint={anyActive ? '실행 중' : '본 HUD 생성 중'}
+        />
+        <Steps
+          steps={activity.map((a) => ({
+            name: a.detail ? `${a.name} · ${a.detail}` : a.name,
+            status: a.status,
+          }))}
+        />
+      </Panel>
     </div>
   );
 }

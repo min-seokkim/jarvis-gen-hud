@@ -1,6 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// HermesToolEvent와 동형(모킹된 모듈에서 타입을 import하지 않기 위해 로컬 정의).
+type ToolEvt = {
+  phase: 'call' | 'output';
+  name: string;
+  item?: Record<string, unknown>;
+};
+type MainOpts = { signal: AbortSignal; onToolEvent?: (event: ToolEvt) => void };
+
 // 즉답(usher)·본 답변(main) 스트림을 테스트마다 갈아끼울 수 있게 hoist된 상태로 둔다.
 // 나머지 hermes export(createConversationName 등)는 원본을 유지해 hudGenerator가
 // 정상 평가되도록 한다.
@@ -8,7 +16,7 @@ const { streams } = vi.hoisted(() => ({
   streams: {
     usher: null as ((input: string, opts: { signal: AbortSignal }) => AsyncGenerator<string>) | null,
     main: null as
-      | ((input: string, conv: string | null, opts: { signal: AbortSignal }) => AsyncGenerator<string>)
+      | ((input: string, conv: string | null, opts: MainOpts) => AsyncGenerator<string>)
       | null,
   },
 }));
@@ -19,7 +27,7 @@ vi.mock('./lib/hermes', async (importOriginal) => {
     ...actual,
     createConversationName: () => 'jarvis-test',
     streamUsher: (input: string, opts: { signal: AbortSignal }) => streams.usher!(input, opts),
-    streamResponse: (input: string, conv: string | null, opts: { signal: AbortSignal }) =>
+    streamResponse: (input: string, conv: string | null, opts: MainOpts) =>
       streams.main!(input, conv, opts),
   };
 });
@@ -148,5 +156,100 @@ describe('App usher/main 오케스트레이션', () => {
     const restored = screen.getByText('복원된 잠정 라인');
     expect(restored).toHaveClass('assistant');
     expect(restored).not.toHaveClass('pending');
+  });
+
+  it('도구 이벤트가 오면 진행 타임라인을 띄우고, 본 HUD 완성 시 교체한다', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    streams.usher = async function* () {
+      yield '확인하겠습니다';
+    };
+    streams.main = async function* (_input, _conv, opts) {
+      opts.onToolEvent?.({
+        phase: 'call',
+        name: 'execute_code',
+        item: {
+          call_id: 'c1',
+          name: 'execute_code',
+          arguments: '{"code":"df -h /\\nprint(1)"}',
+        },
+      });
+      opts.onToolEvent?.({
+        phase: 'output',
+        name: 'c1',
+        item: {
+          call_id: 'c1',
+          output: [
+            { text: '{"status":"success","output":"Filesystem Size Used\\n/dev/sdd 1% /"}' },
+          ],
+        },
+      });
+      await gate; // 본 HUD를 내기 전 진행 타임라인을 관찰할 수 있게 멈춘다.
+      yield JSON.stringify({
+        say: '디스크는 여유롭습니다',
+        design: {
+          data_kind: 'capacity',
+          primitives: ['Stat'],
+          layout: 'single stat',
+          why: 'show free space',
+        },
+        live: null,
+        data: { n: 1 },
+        jsx: '<Panel title="디스크" state="info"><Stat label="free" value={data.n} state="info" /></Panel>',
+      });
+    };
+
+    render(<App />);
+    send('디스크 사용량');
+
+    // 진행 타임라인: 도구 이름(정제 detail 포함) + 완료 카운트.
+    await waitFor(() =>
+      expect(screen.getByTestId('hud-progress')).toBeInTheDocument(),
+    );
+    const progress = screen.getByTestId('hud-progress');
+    expect(progress.textContent).toContain('code_execution');
+    expect(progress.textContent).toContain('1/1');
+
+    // 본 HUD 완성 → 진행 표시가 렌더된 HUD(iframe)로 교체.
+    release();
+    await waitFor(() =>
+      expect(screen.getByTitle('HUD frame')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('hud-progress')).toBeNull();
+  });
+
+  it('도구를 돌았지만 본 HUD가 없으면(jsx:null) 진행 잔상 없이 idle로 정리한다', async () => {
+    streams.usher = async function* () {
+      yield '확인하겠습니다';
+    };
+    streams.main = async function* (_input, _conv, opts) {
+      opts.onToolEvent?.({
+        phase: 'call',
+        name: 'execute_code',
+        item: { call_id: 'c1', name: 'execute_code', arguments: '{"code":"echo hi"}' },
+      });
+      opts.onToolEvent?.({
+        phase: 'output',
+        name: 'c1',
+        item: { call_id: 'c1', output: [{ text: '{"status":"success","output":"hi"}' }] },
+      });
+      yield JSON.stringify({
+        say: '확인했습니다',
+        design: null,
+        live: null,
+        data: {},
+        jsx: null,
+      });
+    };
+
+    render(<App />);
+    send('간단한 작업');
+
+    await waitFor(() => expect(screen.getByText('전송')).toBeInTheDocument());
+    // 진행(generating) 표시가 남지 않고 빈 캔버스(idle)로 정리된다.
+    expect(screen.queryByTestId('hud-progress')).toBeNull();
+    expect(screen.getByTestId('hud-empty')).toBeInTheDocument();
   });
 });

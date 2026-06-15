@@ -61,4 +61,34 @@ describe('HudCanvas', () => {
     expect(screen.getByText('HUD render failed')).toBeInTheDocument();
     expect(screen.getByText('boom')).toBeInTheDocument();
   });
+
+  it('generating + activity면 도구 진행 타임라인(HudProgress)을 렌더한다', () => {
+    render(
+      <HudCanvas
+        hud={{
+          phase: 'generating',
+          activity: [
+            { id: 'a', name: 'code_execution', status: 'done', detail: 'df -h /' },
+            { id: 'b', name: 'file', status: 'active' },
+          ],
+        }}
+        onRenderError={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId('hud-progress')).toBeInTheDocument();
+    // 정제된 detail이 스텝 이름에 인라인되어 실제로 보인다.
+    expect(screen.getByText('code_execution · df -h /')).toBeInTheDocument();
+    expect(screen.getByText('file')).toBeInTheDocument();
+    // 완료 카운트(active가 아닌 항목 수)/전체.
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+    expect(screen.queryByTestId('hud-skeleton')).toBeNull();
+  });
+
+  it('generating인데 activity가 없으면 기존 스켈레톤으로 폴백한다', () => {
+    render(<HudCanvas hud={{ phase: 'generating' }} onRenderError={() => {}} />);
+
+    expect(screen.getByTestId('hud-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('hud-progress')).toBeNull();
+  });
 });

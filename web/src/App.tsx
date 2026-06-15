@@ -27,6 +27,12 @@ import {
   type LiveHudDataMessage,
   type LiveHudEndMessage,
 } from './lib/liveHud';
+import {
+  extractToolDetail,
+  getToolCallId,
+  getToolOutcome,
+  type ToolActivity,
+} from './lib/toolActivity';
 import type { JarvisStatus } from './types';
 import './styles/app.css';
 import './hud/styles.css';
@@ -62,6 +68,7 @@ function ChatApp() {
   const abortRef = useRef<AbortController | null>(null);
   const hudAbortRef = useRef<AbortController | null>(null);
   const usherAbortRef = useRef<AbortController | null>(null);
+  const activityRef = useRef<ToolActivity[]>([]);
   const liveHudRef = useRef<LiveHudClient | null>(null);
   const activeLiveSubRef = useRef<string | null>(null);
   const hudRef = useRef<HudRenderState>(hud);
@@ -106,6 +113,8 @@ function ChatApp() {
     setStreaming(true);
     setStatus('thinking');
     setStatusDetail(undefined);
+    // 새 턴의 도구 진행 타임라인을 초기화(이전 턴 잔상 방지).
+    activityRef.current = [];
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -229,12 +238,26 @@ function ChatApp() {
     } finally {
       usherController.abort();
       await usherTask;
+      // 본 HUD로 교체되지 않은 도구 진행 표시가 남지 않게 정리(잔상 방지).
+      // rendered/error/idle이면 건드리지 않는다.
+      clearHudProgress();
       setStreaming(false);
       abortRef.current = null;
       if (usherAbortRef.current === usherController) {
         usherAbortRef.current = null;
       }
     }
+  }
+
+  /**
+   * 도구 진행(generating) 표시를 idle로 정리한다. 본 HUD 렌더(rendered)·이전
+   * 완성 HUD·에러 상태는 보존하기 위해 generating일 때만 동작한다(함수형
+   * 업데이트라 항상 최신 phase를 본다).
+   */
+  function clearHudProgress() {
+    setHud((current) =>
+      current.phase === 'generating' ? { phase: 'idle' } : current,
+    );
   }
 
   function handleStop() {
@@ -253,6 +276,7 @@ function ChatApp() {
     abortRef.current?.abort();
     hudAbortRef.current?.abort();
     usherAbortRef.current?.abort();
+    activityRef.current = [];
     // Topic shift only: long-term memory stays scoped by X-Hermes-Session-Key.
     setConversation(createConversationName());
     setMessages([]);
@@ -266,9 +290,45 @@ function ChatApp() {
   }
 
   const handleToolEvent = useCallback((event: HermesToolEvent) => {
-    const toolName = formatToolName(event.name);
+    const list = activityRef.current;
     setStatus('tooling');
-    setStatusDetail(event.phase === 'call' ? toolName : `${toolName} done`);
+
+    if (event.phase === 'call') {
+      // 새 도구 시작 — 직전 active 항목은 done으로 마감(대개 직전 도구 완료).
+      for (const item of list) {
+        if (item.status === 'active') item.status = 'done';
+      }
+      const toolName = formatToolName(event.name);
+      list.push({
+        id: getToolCallId(event.item) ?? `tool-${list.length}`,
+        name: toolName,
+        status: 'active',
+        detail: extractToolDetail(event.item, 'call'),
+      });
+      setStatusDetail(toolName);
+    } else {
+      // output — call_id로 매칭(없으면 마지막 active/마지막 항목).
+      const callId = getToolCallId(event.item);
+      const target =
+        (callId ? list.find((item) => item.id === callId) : undefined) ??
+        [...list].reverse().find((item) => item.status === 'active') ??
+        list[list.length - 1];
+      if (target) {
+        target.status = getToolOutcome(event.item);
+        const detail = extractToolDetail(event.item, 'output');
+        if (detail) target.detail = detail;
+        setStatusDetail(
+          `${target.name} ${target.status === 'failed' ? 'failed' : 'done'}`,
+        );
+      }
+    }
+
+    // 첫 도구 이벤트에서 generating 진입(도구 안 쓰는 턴은 진행 HUD 안 뜸).
+    setHud({
+      phase: 'generating',
+      activity: list.map((item) => ({ ...item })),
+      message: '작업 수행 중',
+    });
   }, []);
 
   async function finishEnvelopeTurn(
