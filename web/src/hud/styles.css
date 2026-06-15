@@ -44,6 +44,49 @@
   --hud-state-color: var(--series-4);
 }
 
+/* categorical(다중 시리즈/카테고리) — 비의미 색축 */
+.hud-cat-0 {
+  --hud-state-color: var(--cat-0);
+}
+.hud-cat-1 {
+  --hud-state-color: var(--cat-1);
+}
+.hud-cat-2 {
+  --hud-state-color: var(--cat-2);
+}
+.hud-cat-3 {
+  --hud-state-color: var(--cat-3);
+}
+.hud-cat-4 {
+  --hud-state-color: var(--cat-4);
+}
+.hud-cat-5 {
+  --hud-state-color: var(--cat-5);
+}
+.hud-cat-6 {
+  --hud-state-color: var(--cat-6);
+}
+.hud-cat-7 {
+  --hud-state-color: var(--cat-7);
+}
+
+/* sequential/heat(크기·강도) — 비의미 색축 */
+.hud-seq-0 {
+  --hud-state-color: var(--seq-0);
+}
+.hud-seq-1 {
+  --hud-state-color: var(--seq-1);
+}
+.hud-seq-2 {
+  --hud-state-color: var(--seq-2);
+}
+.hud-seq-3 {
+  --hud-state-color: var(--seq-3);
+}
+.hud-seq-4 {
+  --hud-state-color: var(--seq-4);
+}
+
 .hud-panel {
   min-width: 0;
   background:
@@ -271,6 +314,14 @@
 .hud-gauge-ticks .is-major {
   stroke-width: 1.8;
   opacity: 0.8;
+}
+
+/* 동심 레이더 링 — 게이지에 레이더 질감을 더한다(토큰만). */
+.hud-gauge-ring {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  opacity: 0.55;
 }
 
 .hud-gauge-pointer {
@@ -581,6 +632,24 @@
 
 .hud-chart-bar {
   fill: currentColor;
+}
+
+/* heat 모드: 막대 높이(값)에 따라 sequential 램프로 채움. '값 큼'=웜이며
+   상태색이 아니다(--seq-*만 사용). */
+.hud-chart-bar.hud-heat-0 {
+  fill: var(--seq-0);
+}
+.hud-chart-bar.hud-heat-1 {
+  fill: var(--seq-1);
+}
+.hud-chart-bar.hud-heat-2 {
+  fill: var(--seq-2);
+}
+.hud-chart-bar.hud-heat-3 {
+  fill: var(--seq-3);
+}
+.hud-chart-bar.hud-heat-4 {
+  fill: var(--seq-4);
 }
 
 .hud-chart-xlabels text,

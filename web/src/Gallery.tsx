@@ -90,6 +90,24 @@ const repoSlices = [
   { label: 'config', value: 9 },
 ];
 
+// Tier 1: heat 막대(값→--seq-*)와 categorical 분해(--cat-*) — 상태색과 별개 축.
+const heatBars = [
+  { x: 'init', y: 12 },
+  { x: 'recon', y: 47 },
+  { x: 'exploit', y: 88 },
+  { x: 'c2', y: 63 },
+  { x: 'exfil', y: 100 },
+];
+
+const attackCategories = [
+  { label: 'Initial Access', value: 8 },
+  { label: 'Execution', value: 14 },
+  { label: 'Persistence', value: 5 },
+  { label: 'Lateral Move', value: 11 },
+  { label: 'Exfiltration', value: 3 },
+  { label: 'Impact', value: 6 },
+];
+
 export function Gallery() {
   return (
     <div className="gallery-shell">
@@ -136,6 +154,47 @@ export function Gallery() {
               <PieChart
                 slices={repoSlices}
                 label="Repo composition"
+                state="info"
+              />
+            </Panel>
+          </div>
+        </section>
+
+        <section className="gallery-state-section">
+          <div className="gallery-section-head">
+            <Badge text="tier 1" state="info" />
+            <span>
+              비의미 팔레트: heat 막대(--seq-*) · categorical 파이(--cat-*) ·
+              레이더 게이지
+            </span>
+          </div>
+
+          <div className="hud-grid">
+            <Panel title="Heat bars (값 → seq 램프)" state="info" span={2}>
+              <Chart
+                kind="bar"
+                data={heatBars}
+                unit="score"
+                label="Kill-chain stage intensity"
+                state="info"
+              />
+            </Panel>
+
+            <Panel title="Categorical breakdown" state="info">
+              <PieChart
+                slices={attackCategories}
+                label="Tactic categories"
+                state="info"
+              />
+            </Panel>
+
+            <Panel title="Radar gauge" state="info">
+              <Gauge
+                label="Signal"
+                value={73}
+                min={0}
+                max={100}
+                unit="%"
                 state="info"
               />
             </Panel>

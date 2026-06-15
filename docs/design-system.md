@@ -8,6 +8,7 @@
 - **다크 홀로그램 미감.** 근-검정 배경 + 청록 홀로그램 accent + **파랑(안정) ↔ 빨강(경고)** 상태축.
 - **엔지니어링 readout 톤.** 수치·데이터는 mono. 장식보다 정보 밀도.
 - **데이터는 props로 들어온다.** 컴포넌트는 표현만; 계산·수치는 deterministic 코드가 채운다(LLM이 숫자 지어내지 않음).
+- **색 의미축 보호 (중요).** 상태색(`stable/info/caution/critical`)은 **의미 전용**이다. 시각적 풍부함(heat·다중 시리즈)은 상태색을 **절대 재사용하지 않고** 비의미 팔레트(`--seq-*` 크기·강도, `--cat-*` 카테고리)로만 표현한다. 예: "값이 큼"인 빨강 막대는 `--seq-*`(heat)이지 `--state-critical`(경고)이 아니다. 상태는 오직 `state` prop으로만 들어온다.
 
 ---
 
@@ -42,6 +43,13 @@
   --state-caution-bg:  rgba(245,158,11,.14);
   --state-critical-bg: rgba(239,68,68,.14);
 
+  /* ── NON-semantic richness palettes (상태색 재사용 금지) ── */
+  /* sequential / heat: 크기·강도(쿨→웜). heat 막대·밀도 색 전용. */
+  --seq-0:#22d3ee; --seq-1:#5eead4; --seq-2:#a3e635; --seq-3:#fbbf24; --seq-4:#fb7185;
+  /* categorical: 다중 시리즈/카테고리(청록·인디고·민트·바이올렛·앰버·핑크·스카이·라임). */
+  --cat-0:#22d3ee; --cat-1:#818cf8; --cat-2:#34d399; --cat-3:#c084fc;
+  --cat-4:#fbbf24; --cat-5:#f472b6; --cat-6:#38bdf8; --cat-7:#a3e635;
+
   /* ── typography ── */
   --font-ui:   -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
@@ -64,7 +72,7 @@
 }
 ```
 
-규칙: 컴포넌트는 위 변수만 참조한다. 새 색/하드코딩 hex 금지(상태는 `state` prop으로만).
+규칙: 컴포넌트는 위 변수만 참조한다. 새 색/하드코딩 hex 금지(상태는 `state` prop으로만). 풍부함(heat·다중 시리즈)은 `--seq-*`/`--cat-*`로만 — 상태색과 별개 축이다.
 
 ---
 
@@ -76,6 +84,15 @@ type State = "stable" | "info" | "caution" | "critical";
 // stable=파랑(안정), info=청록(정보), caution=주황(주의), critical=빨강(경고/실패)
 type Size = "sm" | "md" | "lg";
 ```
+
+### 비의미 색축 (richness — ≠ state)
+다중 시리즈·heat 등 "풍부함"은 상태색을 **재사용하지 않는다**(의미 혼선 방지).
+- `--seq-0..4` — sequential/heat 램프(크기·강도; 쿨→웜). heat 막대·밀도 색 전용.
+- `--cat-0..7` — categorical(시리즈/카테고리 구분; 청록 외 ≥6 휴).
+
+규칙: "값 큼"(heat 막대 등)=`--seq-*`, 다중 시리즈/카테고리=`--cat-*`, 상태(경고/안정)=`state` prop. **셋은 독립 축**이며 서로 침범하지 않는다. PieChart/Chart heat 등은 `state`가 없을 때만 비의미 팔레트를 쓰고, `state`가 주어지면 의미색을 따른다.
+
+> 동일 수치를 `Stat`과 `KeyValue`로 **중복 표기하지 말 것**(한 곳에서만). 한 HUD = 2–4 프리미티브, 그래픽 우선.
 
 ---
 

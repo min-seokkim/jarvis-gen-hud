@@ -33,6 +33,27 @@
   --series-3: #818cf8;
   --series-4: #2dd4bf;
 
+  /* ── NON-semantic richness palettes ──
+     상태색(--state-*)은 의미 전용. 풍부함(heat·다중 시리즈)은 여기서만 쓴다.
+     빨강 막대='값 큼'은 --seq-*이지 --state-critical이 아니다. */
+
+  /* sequential / heat ramp: 크기·강도(쿨→웜). heat 바·밀도 색 전용. */
+  --seq-0: #22d3ee; /* low / cool */
+  --seq-1: #5eead4;
+  --seq-2: #a3e635;
+  --seq-3: #fbbf24;
+  --seq-4: #fb7185; /* high / warm (≠ --state-critical) */
+
+  /* categorical: 다중 시리즈/카테고리 구분(청록 외 인디고·민트·바이올렛·앰버 등). */
+  --cat-0: #22d3ee;
+  --cat-1: #818cf8;
+  --cat-2: #34d399;
+  --cat-3: #c084fc;
+  --cat-4: #fbbf24;
+  --cat-5: #f472b6;
+  --cat-6: #38bdf8;
+  --cat-7: #a3e635;
+
   /* typography */
   --font-ui:
     -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic',

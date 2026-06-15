@@ -85,7 +85,7 @@ describe('HUD primitives', () => {
     expect(screen.getByText('LIVE')).toBeInTheDocument();
   });
 
-  it('uses neutral series colors for slices without an explicit state', () => {
+  it('uses categorical (non-semantic) colors for slices without an explicit state', () => {
     const { container } = render(
       <PieChart
         slices={[
@@ -101,7 +101,7 @@ describe('HUD primitives', () => {
     expect(segments).toHaveLength(4);
     segments.forEach((segment, index) => {
       const className = segment.getAttribute('class') ?? '';
-      expect(className).toContain(`hud-series-${index}`);
+      expect(className).toContain(`hud-cat-${index}`);
       expect(className).not.toMatch(/hud-state-(caution|critical)/);
     });
   });
@@ -118,7 +118,7 @@ describe('HUD primitives', () => {
 
     const segments = container.querySelectorAll('.hud-pie-segment');
     expect(segments[0].getAttribute('class')).toContain('hud-state-critical');
-    expect(segments[1].getAttribute('class')).toContain('hud-series-1');
+    expect(segments[1].getAttribute('class')).toContain('hud-cat-1');
   });
 
   it('anchors bar charts to the zero line and labels the x range', () => {
@@ -238,5 +238,42 @@ describe('HUD primitive refinement', () => {
       />,
     );
     expect(screen.getByText('100')).toBeInTheDocument();
+  });
+});
+
+describe('HUD Tier1 — 비의미 색 팔레트(색축 보호)', () => {
+  it('heat 막대는 값에 따라 sequential(--seq-*) 클래스를 받고 상태색을 침범하지 않는다', () => {
+    const { container } = render(
+      <Chart
+        kind="bar"
+        data={[
+          { x: 'a', y: 0 },
+          { x: 'b', y: 50 },
+          { x: 'c', y: 100 },
+        ]}
+      />,
+    );
+    const bars = [...container.querySelectorAll('.hud-chart-bar')];
+    expect(bars).toHaveLength(3);
+    expect(bars[0].getAttribute('class')).toContain('hud-heat-0'); // 최소→cool
+    expect(bars[2].getAttribute('class')).toContain('hud-heat-4'); // 최대→warm
+    bars.forEach((bar) =>
+      expect(bar.getAttribute('class')).not.toMatch(/hud-state-/),
+    );
+  });
+
+  it('상태가 명시된 PieChart 슬라이스는 categorical이 아니라 state 색을 쓴다', () => {
+    const { container } = render(
+      <PieChart
+        slices={[
+          { label: 'crit', value: 1, state: 'critical' },
+          { label: 'plain', value: 1 },
+        ]}
+      />,
+    );
+    const segments = container.querySelectorAll('.hud-pie-segment');
+    expect(segments[0].getAttribute('class')).toContain('hud-state-critical');
+    expect(segments[0].getAttribute('class')).not.toMatch(/hud-cat-/);
+    expect(segments[1].getAttribute('class')).toContain('hud-cat-');
   });
 });

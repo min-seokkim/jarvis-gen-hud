@@ -86,7 +86,7 @@ export interface KeyValueProps {
 }
 
 const DEFAULT_STATE: State = 'info';
-const SERIES_PALETTE_SIZE = 5;
+const CAT_PALETTE_SIZE = 8;
 
 type PieSlice = {
   label?: string;
@@ -174,6 +174,10 @@ export function Gauge({
   return (
     <div className={`hud-gauge hud-state-${state}`}>
       <svg viewBox="0 0 120 120" role="img" aria-label={label}>
+        <g className="hud-gauge-rings" aria-hidden="true">
+          <circle className="hud-gauge-ring" cx="60" cy="60" r="30" />
+          <circle className="hud-gauge-ring" cx="60" cy="60" r="18" />
+        </g>
         <g className="hud-gauge-ticks" aria-hidden="true">
           {gaugeTicks(16).map((tick) => (
             <line
@@ -227,11 +231,12 @@ export function PieChart({
     .filter((slice) => slice.value > 0)
     // State colors carry meaning (caution/critical are warnings), so slices
     // without an explicit state get a neutral series palette instead.
+    // 상태가 명시되면 의미색(state), 아니면 비의미 categorical 팔레트(--cat-*).
     .map((slice, index) => ({
       ...slice,
       tone: slice.state
         ? `hud-state-${slice.state}`
-        : `hud-series-${index % SERIES_PALETTE_SIZE}`,
+        : `hud-cat-${index % CAT_PALETTE_SIZE}`,
     }));
   const total = safeSlices.reduce((sum, slice) => sum + slice.value, 0);
   const radius = 38;
@@ -394,7 +399,7 @@ export function Chart({
             points.map((point, index) => (
               <rect
                 key={`${point.x}-${point.y}-${index}`}
-                className="hud-chart-bar"
+                className={`hud-chart-bar hud-heat-${heatIndex(entries[index]?.y, yMin, yMax)}`}
                 x={point.x - point.barWidth / 2}
                 y={Math.min(point.y, baselineY)}
                 width={point.barWidth}
@@ -555,6 +560,15 @@ function chartBaselineY(values: number[]): number {
   if (min >= 0) return 64;
   if (max <= 0) return 8;
   return 64 - ((0 - min) / (max - min)) * 56;
+}
+
+/** 값을 0..4 sequential 램프 인덱스로(heat 막대 색). 범위 0이면 중간. */
+function heatIndex(value: number | undefined, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || max <= min) {
+    return 2;
+  }
+  const normalized = (value - min) / (max - min);
+  return Math.max(0, Math.min(4, Math.round(normalized * 4)));
 }
 
 function gaugeTicks(count: number): {
