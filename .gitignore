@@ -9,6 +9,7 @@ __pycache__/
 node_modules/
 web/dist/
 dist/
+.vite/
 hermes_spike.py
 # host-local live-source manifests — copy *.example -> *.json per host (GPU 등).
 # 레포는 GPU/호스트 비종속: 빌트인 소스만 커밋, 동적 매니페스트는 호스트 로컬.
