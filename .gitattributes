@@ -1,0 +1,9 @@
+# 배포 실행 파일은 Linux 호스트에서 반드시 LF여야 한다.
+# (CRLF면 make는 recipe/탭, bash는 shebang, systemd는 유닛 파싱이 깨진다.)
+Makefile         text eol=lf
+*.sh             text eol=lf
+*.service        text eol=lf
+*.yml            text eol=lf
+*.yaml           text eol=lf
+Caddyfile        text eol=lf
+*.json.example   text eol=lf

@@ -21,7 +21,9 @@ live source가 3곳에 하드코딩돼 있었다 — `orchestrator/sources/regis
   빌트인 id는 동적 manifest로 덮어쓸 수 없다.
 - **프론트/프롬프트 파생.** 앱 init 시 `/sources`를 fetch → allow-list와 HUD 프롬프트의
   live 섹션을 descriptor에서 조립. 오케스트레이터 다운 시 빌트인 descriptor로 폴백.
-- **GPU = 첫 동적 소스.** `dynamic/gpu.json` (`nvidia-smi --query-gpu=...`).
+- **GPU = 첫 동적 소스(호스트 로컬 예시).** `dynamic/gpu.json.example` (`nvidia-smi --query-gpu=...`)를
+  복사해 `dynamic/gpu.json`으로 활성화. 레포는 GPU 비종속 — 동적 manifest는 커밋하지 않고(`.gitignore`)
+  빌트인 소스만으로 동작한다.
 
 ## 트러스트 경계 (솔로-로컬 한정)
 

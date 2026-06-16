@@ -1,24 +1,20 @@
-# Hermes Agent — 프로젝트 배포용 compose (집 워크스테이션, WSL2)
+# Hermes Agent — 프로젝트 배포용 compose (집 워크스테이션, WSL2 / Docker Engine)
 #
-# 토폴로지: 노트북 브라우저 → (인터넷, 포트포워딩+DDNS, 80/443) → caddy(TLS) →
-#           ├─ /      : React 정적 빌드
-#           └─ /v1/*  : hermes API 서버(컨테이너 네트워크 hermes:8642). 키는 Caddy가 주입.
-#  * API 서버는 호스트/인터넷에 직접 노출하지 않는다(포트 미발행). 외부엔 caddy의 80/443만.
+# 배포 모델 A(하이브리드) 토폴로지:
+#   노트북 브라우저 → (인터넷, 포트포워딩+DDNS, 80/443) → caddy(host networking, TLS) →
+#     ├─ /        : React 정적 빌드(web/dist)
+#     ├─ /v1/*    : hermes API(127.0.0.1:8642, host loopback). 키는 Caddy가 주입.
+#     └─ /ws,/sources : 호스트 네이티브 오케스트레이터(127.0.0.1:8765, systemd user 유닛)
+#  * hermes·오케스트레이터는 호스트 loopback에만 노출(LAN/인터넷 비노출). 외부엔 caddy의 80/443만.
+#  * caddy는 host networking이라 호스트 loopback의 두 서비스에 직접 닿는다(컨테이너↔호스트 우회 불필요).
 #
 # ── 최초 1회: 설정 마법사(프로바이더/모델/툴). 공식 이미지로 인터랙티브 실행 ──
 #   mkdir -p ~/.hermes
 #   docker run -it --rm -v ~/.hermes:/opt/data nousresearch/hermes-agent setup
 #
-# ── 1단계(첫 항목): hermes만 띄워서 백엔드 경로 검증 ──
-#   cd deploy && cp .env.example .env   # API_SERVER_KEY 등 채우기
-#   docker compose up -d hermes
-#   docker compose exec hermes hermes doctor
-#   docker compose exec hermes curl -s -H "Authorization: Bearer $API_SERVER_KEY" \
-#       http://localhost:8642/v1/models
+# ── 한 방 기동: 레포 루트에서 `make up` (프론트 빌드 + 오케스트레이터 + 이 compose + 헬스) ──
 #
-# ── 2단계: DDNS/포트포워딩 준비되면 caddy까지 ──  docker compose up -d
-#
-# 주의: 한 데이터 디렉토리(~/.hermes)에 gateway 컨테이너 둘 동시 실행 금지.
+# 주의: 한 데이터 디렉토리(~/.hermes)에 gateway 둘 동시 실행 금지(배포는 이 Docker hermes 하나).
 
 services:
   hermes:
@@ -29,37 +25,39 @@ services:
     volumes:
       - ~/.hermes:/opt/data                    # 설정·키·세션·메모리·스킬·로그 영속
     environment:
-      # OpenAI 호환 API 서버. 컨테이너 네트워크 안에서만 도달(호스트 포트 미발행).
+      # OpenAI 호환 API 서버. 컨테이너 내부 0.0.0.0에 바인드하고 호스트엔 loopback만 발행.
       - API_SERVER_ENABLED=true
-      - API_SERVER_HOST=0.0.0.0                 # 컨테이너 내 0.0.0.0 = 같은 docker 네트워크의 caddy가 도달. 호스트엔 미발행이라 안전.
+      - API_SERVER_HOST=0.0.0.0                 # 컨테이너 내부 바인드. 호스트 노출은 아래 ports(127.0.0.1)로만.
       - API_SERVER_PORT=8642
       - API_SERVER_KEY=${API_SERVER_KEY}        # 최소 8자. openssl rand -hex 32
-      # ~/.hermes 파일이 호스트 유저 소유로 남게(권한 문제 예방). 인라인: HERMES_UID=$(id -u) ...
+      # ~/.hermes 파일이 호스트 유저 소유로 남게(권한 문제 예방). make up이 HERMES_UID/GID=$(id -u/g) 주입.
       - HERMES_UID=${HERMES_UID:-10000}
       - HERMES_GID=${HERMES_GID:-10000}
       # 대시보드를 같은 컨테이너 side-process로 띄우려면(선택):
       # - HERMES_DASHBOARD=1                     # 9119, 별도 컨테이너로는 못 띄움(PID 공유 필요)
+    # host loopback에만 발행 — caddy(host net)가 /v1 프록시로 닿는다. LAN/인터넷 비노출.
+    ports:
+      - "127.0.0.1:8642:8642"
     networks: [hermes-net]
     deploy:
       resources:
         limits:
           memory: 4G
           cpus: "2.0"
-    # ports:                                    # 디버깅용 로컬 직접 접근이 필요할 때만 임시로:
-    #   - "127.0.0.1:8642:8642"
 
-  # 공개 종단(노트북이 닿는 유일한 곳): TLS + React 서빙 + /v1 프록시 + basic-auth.
+  # 공개 종단(노트북이 닿는 유일한 곳): TLS + React 서빙 + /v1·/ws·/sources 프록시 + basic-auth.
   caddy:
     image: caddy:2
     container_name: hermes-caddy
     restart: unless-stopped
     depends_on: [hermes]
-    ports:
-      - "80:80"
-      - "443:443"
+    # host networking: 80/443을 호스트에 직접 바인드하고, 호스트 loopback의
+    # hermes(127.0.0.1:8642)·오케스트레이터(127.0.0.1:8765)에 직접 닿는다.
+    # (network_mode: host 는 ports/networks/extra_hosts 와 동시 사용 불가 — 모두 생략.)
+    network_mode: host
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../web/dist:/srv:ro                     # React 프로덕션 빌드 (실제 앱 위치로 조정)
+      - ../web/dist:/srv:ro                     # React 프로덕션 빌드 (make up이 생성)
       - caddy_data:/data                        # Let's Encrypt 인증서 영속
       - caddy_config:/config
     environment:
@@ -67,7 +65,6 @@ services:
       - API_SERVER_KEY=${API_SERVER_KEY}
       - BASIC_AUTH_USER=${BASIC_AUTH_USER}
       - BASIC_AUTH_HASH=${BASIC_AUTH_HASH}
-    networks: [hermes-net]
 
 networks:
   hermes-net:

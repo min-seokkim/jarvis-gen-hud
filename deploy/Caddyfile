@@ -18,23 +18,26 @@
 		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
 	}
 
-	# /v1/* → Hermes OpenAI 호환 API 서버(같은 docker 네트워크의 컨테이너명 hermes). 키는 여기서(서버측) 주입.
+	# /v1/* → Hermes OpenAI 호환 API 서버(호스트 loopback 127.0.0.1:8642, compose가 발행). 키는 여기서(서버측) 주입.
+	# caddy가 host networking이라 호스트 loopback에 직접 닿는다.
 	handle /v1/* {
-		reverse_proxy hermes:8642 {
+		reverse_proxy 127.0.0.1:8642 {
 			header_up Authorization "Bearer {$API_SERVER_KEY}"
 			header_up -Origin          # Hermes(aiohttp)는 브라우저 Origin 헤더가 붙은 요청을 403으로 거절 → 제거 (dev Vite 프록시도 동일 처리)
 			flush_interval -1          # SSE 스트리밍을 버퍼링 없이 흘려보냄
 		}
 	}
 
-	# /ws → 워크스테이션 오케스트레이터 라이브 HUD 채널. Caddy가 WebSocket upgrade를 자동 처리.
+	# /ws → 호스트 네이티브 오케스트레이터(systemd user 유닛, 127.0.0.1:8765)의 라이브 HUD 채널.
+	# 배포 모델 A(하이브리드): 오케스트레이터만 호스트에서 돌아 호스트 도구/동적 소스에 접근한다.
+	# caddy가 host networking이라 호스트 loopback에 직접 닿는다. WS는 자동 upgrade.
 	handle /ws {
-		reverse_proxy orchestrator:8765
+		reverse_proxy 127.0.0.1:8765
 	}
 
 	# /sources → 오케스트레이터 live source descriptor 목록(프론트 allow-list/프롬프트가 파생).
 	handle /sources {
-		reverse_proxy orchestrator:8765
+		reverse_proxy 127.0.0.1:8765
 	}
 
 	# (M5) 음성 서비스 WebSocket이 생기면 여기에 추가:

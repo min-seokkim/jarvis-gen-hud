@@ -1,0 +1,24 @@
+# systemd USER unit template — J.A.R.V.I.S live-HUD orchestrator (host-native).
+#
+# 배포 모델 A(하이브리드): 오케스트레이터만 호스트 네이티브로 돈다(nvidia-smi 등
+# 호스트 도구·동적 소스 접근). Caddy/Hermes는 Docker. 127.0.0.1:8765 바인드 —
+# 공개·LAN 노출 없음. Caddy(host networking)가 호스트 loopback으로 닿는다.
+#
+# 이 파일은 템플릿이다. 직접 설치하지 말고 레포 루트에서:
+#     make orchestrator-install      # 자리표시자 치환 후 ~/.config/systemd/user 에 설치·기동
+#     make orchestrator-uninstall    # 중지·비활성·제거
+# (make up 이 자동으로 install 까지 수행. __REPO_DIR__/__VENV_PY__ 는 Makefile 이 치환.)
+
+[Unit]
+Description=J.A.R.V.I.S live-HUD orchestrator (FastAPI/uvicorn, 127.0.0.1:8765)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+ExecStart=__VENV_PY__ -m uvicorn orchestrator.server:app --host 127.0.0.1 --port 8765
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

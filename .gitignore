@@ -10,3 +10,8 @@ node_modules/
 web/dist/
 dist/
 hermes_spike.py
+# host-local live-source manifests — copy *.example -> *.json per host (GPU 등).
+# 레포는 GPU/호스트 비종속: 빌트인 소스만 커밋, 동적 매니페스트는 호스트 로컬.
+orchestrator/sources/dynamic/*.json
+# python venv (오케스트레이터 호스트 네이티브 실행용)
+.venv/

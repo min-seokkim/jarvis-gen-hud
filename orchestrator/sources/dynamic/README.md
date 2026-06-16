@@ -10,6 +10,25 @@ in this directory are executed** — raw commands from a HUD envelope or model
 output are never run. See `docs/decisions/0005-dynamic-live-sources.md` for the
 trust boundary.
 
+## Host-local — the repo does not ship any active manifest
+
+`*.json` files here are **host-local** and `.gitignore`d (never committed). The
+repo is **GPU/host-independent**: it runs on the builtin sources
+(`disk`/`project`/`build_sim`/`proc_watch`) alone, so a fresh clone works on a
+machine with no GPU and no extra tooling.
+
+`*.json.example` files are committed templates. Copy one to activate it on a host:
+
+```bash
+cp gpu.json.example gpu.json   # picked up on the next /sources (hot reload)
+```
+
+If a manifest's command is missing (e.g. `gpu.json` on a box without
+`nvidia-smi`), **only that source** reports `state: "caution"` per tick — the
+channel stays up and every other source keeps working. Discovery never runs the
+command, so listing a source on a machine that lacks its binary cannot crash the
+orchestrator.
+
 ## `command` manifest
 
 ```jsonc

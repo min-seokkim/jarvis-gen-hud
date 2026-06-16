@@ -197,11 +197,29 @@ def test_descriptor_from_manifest_validates():
     assert descriptor_from_manifest("not a dict") is None
 
 
-def test_gpu_manifest_is_discovered():
-    # The shipped dynamic/gpu.json is discovered as a command source. Discovery
-    # does not execute nvidia-smi, so this passes on machines without a GPU.
-    described = {item["id"]: item for item in describe_sources()}
-    assert "gpu" in described
-    assert described["gpu"]["kind"] == "command"
-    assert "tempC" in described["gpu"]["outputSchema"]
-    assert get_source("gpu") is not None
+def test_empty_dynamic_dir_yields_builtins_only(tmp_path: Path):
+    # Fresh-clone simulation: the repo ships NO active dynamic manifest (only
+    # *.json.example), so an empty dynamic dir contributes nothing and the app
+    # runs on builtins alone — proving GPU/host-independence.
+    assert load_dynamic(tmp_path) == {}
+    assert {"disk", "project", "build_sim", "proc_watch"}.issubset(set(list_sources()))
+
+
+def test_gpu_example_is_valid_command_manifest(tmp_path: Path):
+    # gpu is shipped only as a host-local EXAMPLE. The example must still be a
+    # valid command manifest: copying it into a dynamic dir registers a `gpu`
+    # command source, and discovery does NOT run nvidia-smi — so this passes on
+    # machines without a GPU.
+    example = (
+        Path(__file__).resolve().parent.parent
+        / "sources" / "dynamic" / "gpu.json.example"
+    )
+    (tmp_path / "gpu.json").write_text(
+        example.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    loaded = load_dynamic(tmp_path)
+    assert "gpu" in loaded
+    assert loaded["gpu"].kind == "command"
+    assert "tempC" in loaded["gpu"].output_schema
+    assert get_descriptor("gpu", tmp_path) is not None
