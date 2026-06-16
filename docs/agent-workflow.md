@@ -42,7 +42,7 @@
 - 로드맵 M0~M6의 각 마일스톤이 대략 이 단위.
 
 ### 컴포넌트 단위 (수평 슬라이스) — 기능 안에서 더 쪼갤 때
-- 재사용 컴포넌트/모듈로 분해. 예) HUD 프리미티브(ProgressBar, Gauge, StatusPanel, ChartWrap, Alert), 샌드박스 래퍼, 디자인 토큰, 음성 파이프라인의 STT/LLM/TTS 어댑터.
+- 재사용 컴포넌트/모듈로 분해. 예) HUD 프리미티브(ProgressBar, Gauge, StatusPanel, Chart, Alert), 샌드박스 래퍼, 디자인 토큰, 음성 파이프라인의 STT/LLM/TTS 어댑터.
 - 기준: **다른 기능에서도 재사용되는가 / 독립적으로 테스트되는가** → 그러면 별도 컴포넌트(= sub-task).
 
 ### 쪼개기 규칙 (운영)

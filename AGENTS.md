@@ -15,6 +15,7 @@
 
 ## 저장소 구조
 - `web/` — React 앱 (2주차부터)
+- `orchestrator/` — 라이브 HUD 소스 오케스트레이터 (Python: `/sources` descriptor + `/ws` 라이브 푸시)
 - `deploy/` — 배포 (docker-compose, Caddyfile, .env.example)
 - `docs/` — 기획서·agent-workflow·회고 (GitHub Wiki와 동기화)
 - `jarvis_handoff.md` — 설계 배경·논리
@@ -24,7 +25,7 @@
 React(Vite + TS) · HUD: 제약 JSX 샌드박스(react-live/Sandpack, iframe 격리, 자기치유) · 두뇌: **단일 Hermes Agent**(OpenAI 호환 API), **역할 하이브리드**(빠른 메인 Haiku4.5/GPT-5.4-mini = 음성·즉답·dispatch + 강한 delegation Opus4.6/GPT-5.5 = 추론; 프로바이더 OpenAI·Anthropic만) · 음성: faster-whisper(STT, 로컬) + ElevenLabs(TTS), 오케스트레이터(워크스테이션 Python)가 `/v1` 병렬 멀티플렉싱 — **로컬 LLM(Qwen/Ollama) 없음**.
 
 ## 연결 사실 (중요)
-- 프론트는 **같은 출처** `/v1/chat/completions`(SSE 스트리밍)로 Hermes를 호출한다.
+- 프론트는 **같은 출처** `/v1/responses`(OpenAI Responses API, SSE 스트리밍)로 Hermes를 호출한다.
 - **"OpenAI 호환"은 규격을 뜻한다 — OpenAI사 호출이 아니다.** 이 `/v1` 엔드포인트는 **Hermes가 띄운 로컬 API 서버**(`localhost:8642`)이며, OpenAI API와 같은 형식이라 OpenAI용 클라이언트/SDK를 그대로 붙일 수 있다는 의미일 뿐이다. (혼동 주의: 두뇌=클라우드 모델이 현재 OpenAI사인 것과 **별개**. 두뇌를 Claude 등으로 바꿔도 이 API 서버는 계속 OpenAI 호환.)
 - **API 키를 프론트에 넣지 않는다.** Caddy가 서버측에서 `Authorization` 헤더를 주입하고 사이트를 basic-auth로 게이트한다.
 - 모델 호출부는 모델 무관하게 추상화 (프로바이더 교체 가능).

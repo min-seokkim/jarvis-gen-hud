@@ -15,7 +15,7 @@
 | 4 | 반응형 React 앱 셸 + Hermes 토큰 스트리밍 대화 | 기능 | M1 | `feature` |
 | 5 | 레이아웃: 대화 패널 + HUD 캔버스 분리 | 컴포넌트 | M1 | `feature` |
 | 6 | 자비스 디자인 토큰 정의(청록/검정/파랑↔빨강) | 컴포넌트 | M2 | `design` |
-| 7 | HUD 프리미티브: ProgressBar/Gauge/StatusPanel/ChartWrap/Alert | 컴포넌트 | M2 | `feature` |
+| 7 | HUD 프리미티브: ProgressBar/Gauge/StatusPanel/Chart/Alert | 컴포넌트 | M2 | `feature` |
 | 8 | 제약 JSX 생성→샌드박스 렌더→자기치유 루프 | 기능 | M3 | `core` |
 | 9 | 보편 후크: "빌드 상태 보여줘" → 빌드 진행 HUD | 기능 | M3 | `core` |
 | 10 | 본 적 없는 작업의 HUD 발명(프롬프트 일반화) | 기능 | M4 | `core` |

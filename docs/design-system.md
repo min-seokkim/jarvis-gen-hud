@@ -149,9 +149,9 @@ interface StatProps { label: string; value: string | number; unit?: string; delt
 
 ### Steps — 순서 단계 진행 (빌드 상태 데모 핵심)
 ```ts
-type StepStatus = "done" | "active" | "pending" | "failed";
+type StepStatus = "done" | "active" | "pending" | "failed" | "caution";
 interface StepsProps { steps: { name: string; status: StepStatus }[]; }
-// failed → critical 색, active → accent, done → stable, pending → dim
+// failed → critical 색, active → accent, done → stable, caution → 주의(partial), pending → dim
 ```
 
 ### Chart — 작은 데이터 차트 (데이터 in, 표현만)
@@ -187,6 +187,15 @@ interface RadialBreakdownProps {
   label?: string; unit?: string; state?: State;
 }
 // 카테고리별 값 분해(ATT&CK 룩). 스포크 길이=값, 색은 state면 의미색·없으면 --cat-*, 중앙=total.
+```
+
+### PieChart — 도넛 카테고리 분해 (+ 중앙 합계)
+```ts
+interface PieChartProps {
+  slices: { label: string; value: number; state?: State }[]; // data 별칭 허용
+  label?: string; state?: State;
+}
+// 도넛 분해. 슬라이스 색은 state면 의미색·없으면 --cat-*, 중앙=total.
 ```
 
 ### Alert — 메시지
